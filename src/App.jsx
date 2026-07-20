@@ -1,30 +1,84 @@
 import { useEffect, useRef, useState } from 'react'
 import { tmdb, img } from './api.js'
+import { slugify } from './slugify.js'
+
+const DEFAULT_TITLE = "Who's That? — Spoiler-Free Character Guide for Movies & TV"
+
+// Parses /movie/:id/:slug and /tv/:id/:slug; anything else is home.
+function parseRoute(pathname) {
+  const m = pathname.match(/^\/(movie|tv)\/(\d+)(?:\/|$)/)
+  if (m) return { type: 'title', mediaType: m[1], id: Number(m[2]) }
+  return { type: 'home' }
+}
+
+function titleUrl(item) {
+  const type = item.media_type === 'tv' ? 'tv' : 'movie'
+  const slug = slugify(item.title || item.name)
+  return `/${type}/${item.id}${slug ? `/${slug}` : ''}`
+}
+
+function setCanonical(url) {
+  let link = document.querySelector('link[rel="canonical"]')
+  if (!link) {
+    link = document.createElement('link')
+    link.setAttribute('rel', 'canonical')
+    document.head.appendChild(link)
+  }
+  link.setAttribute('href', url)
+}
 
 export default function App() {
-  const [view, setView] = useState({ type: 'home' })
+  const [route, setRoute] = useState(() => parseRoute(window.location.pathname))
+
+  useEffect(() => {
+    const onPopState = () => setRoute(parseRoute(window.location.pathname))
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  const navigate = (path) => {
+    if (path !== window.location.pathname) window.history.pushState(null, '', path)
+    setRoute(parseRoute(path))
+    window.scrollTo(0, 0)
+  }
+
+  useEffect(() => {
+    if (route.type === 'home') {
+      document.title = DEFAULT_TITLE
+      setCanonical(`${window.location.origin}/`)
+    }
+  }, [route])
 
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
-          <button
-            onClick={() => setView({ type: 'home' })}
+          <a
+            href="/"
+            onClick={(e) => {
+              e.preventDefault()
+              navigate('/')
+            }}
             className="flex items-center gap-2 text-lg font-bold tracking-tight"
           >
             <span className="grid size-8 place-items-center rounded-lg bg-amber-400 text-zinc-950">?</span>
             Who&rsquo;s That?
-          </button>
+          </a>
           <span className="hidden text-sm text-zinc-500 sm:inline">
             Spoiler-free character guides for movies &amp; TV
           </span>
         </div>
       </header>
 
-      {view.type === 'home' ? (
-        <Home onPick={(item) => setView({ type: 'title', item })} />
+      {route.type === 'home' ? (
+        <Home onPick={(item) => navigate(titleUrl(item))} />
       ) : (
-        <TitlePage item={view.item} onBack={() => setView({ type: 'home' })} />
+        <TitlePage
+          key={`${route.mediaType}-${route.id}`}
+          mediaType={route.mediaType}
+          id={route.id}
+          onBack={() => navigate('/')}
+        />
       )}
 
       <footer className="mx-auto max-w-5xl px-4 py-10 text-center text-xs text-zinc-600">
@@ -93,8 +147,12 @@ function Home({ onPick }) {
               )}
               {results.map((r) => (
                 <li key={`${r.media_type}-${r.id}`}>
-                  <button
-                    onClick={() => onPick(r)}
+                  <a
+                    href={titleUrl(r)}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      onPick(r)
+                    }}
                     className="flex w-full items-center gap-3 px-4 py-2.5 hover:bg-zinc-800"
                   >
                     <Poster path={r.poster_path} className="h-14 w-10 rounded" />
@@ -105,7 +163,7 @@ function Home({ onPick }) {
                         {(r.release_date || r.first_air_date || '').slice(0, 4) || '—'}
                       </span>
                     </span>
-                  </button>
+                  </a>
                 </li>
               ))}
             </ul>
@@ -121,10 +179,14 @@ function Home({ onPick }) {
           </h2>
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
             {trending.map((r) => (
-              <button
+              <a
                 key={`${r.media_type}-${r.id}`}
-                onClick={() => onPick(r)}
-                className="group text-left"
+                href={titleUrl(r)}
+                onClick={(e) => {
+                  e.preventDefault()
+                  onPick(r)
+                }}
+                className="group block text-left"
               >
                 <Poster
                   path={r.poster_path}
@@ -134,17 +196,40 @@ function Home({ onPick }) {
                 <span className="mt-1.5 block truncate text-sm text-zinc-300">
                   {r.title || r.name}
                 </span>
-              </button>
+              </a>
             ))}
           </div>
         </section>
       )}
+
+      <section className="mx-auto max-w-2xl border-t border-zinc-800/80 pb-16 pt-12">
+        <h2 className="text-xl font-bold tracking-tight text-zinc-200">
+          A spoiler-free cast &amp; character guide for any movie or TV show
+        </h2>
+        <p className="mt-4 text-sm leading-relaxed text-zinc-400">
+          Ever paused a show to ask &ldquo;wait, who is that again?&rdquo; Who&rsquo;s That? shows
+          you every character&rsquo;s face, name, and the actor who plays them — and nothing else.
+          No episode recaps, no plot summaries, no accidental spoilers. It&rsquo;s the fastest way
+          to figure out who plays who without risking the story.
+        </p>
+        <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+          Watching a TV series? Use the spoiler shield to tell us which season you&rsquo;re on, and
+          we&rsquo;ll only show characters who have already appeared — so a surprise season-three
+          arrival never gets revealed early. You can also tap any actor to see where you know them
+          from, spoiler-free.
+        </p>
+        <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+          Whether you lose track of large ensemble casts, mix up look-alike actors, or live with
+          face blindness (prosopagnosia), this guide keeps every face and name one glance away, for
+          any movie or show on any streaming service.
+        </p>
+      </section>
     </main>
   )
 }
 
-function TitlePage({ item, onBack }) {
-  const isTV = item.media_type === 'tv'
+function TitlePage({ mediaType, id, onBack }) {
+  const isTV = mediaType === 'tv'
   const [details, setDetails] = useState(null)
   const [cast, setCast] = useState(null)
   const [upToSeason, setUpToSeason] = useState('all')
@@ -154,11 +239,21 @@ function TitlePage({ item, onBack }) {
     setDetails(null)
     setCast(null)
     setUpToSeason('all')
-    const path = isTV ? `/tv/${item.id}` : `/movie/${item.id}`
+    const path = isTV ? `/tv/${id}` : `/movie/${id}`
     tmdb(path, { append_to_response: isTV ? 'aggregate_credits' : 'credits' })
       .then(setDetails)
       .catch((e) => setError(e.message))
-  }, [item.id, isTV])
+  }, [id, isTV])
+
+  useEffect(() => {
+    if (!details) return
+    const name = details.title || details.name
+    const y = (details.release_date || details.first_air_date || '').slice(0, 4)
+    document.title = `${name}${y ? ` (${y})` : ''} Cast & Character Guide — No Spoilers | Who's That?`
+    setCanonical(
+      `${window.location.origin}/${isTV ? 'tv' : 'movie'}/${details.id}/${slugify(name)}`,
+    )
+  }, [details, isTV])
 
   useEffect(() => {
     if (!details) return
@@ -175,7 +270,7 @@ function TitlePage({ item, onBack }) {
     setCast(null)
     Promise.all(
       Array.from({ length: n }, (_, i) =>
-        tmdb(`/tv/${item.id}/season/${i + 1}/aggregate_credits`).catch(() => ({ cast: [] })),
+        tmdb(`/tv/${id}/season/${i + 1}/aggregate_credits`).catch(() => ({ cast: [] })),
       ),
     )
       .then((seasons) => {
@@ -195,7 +290,7 @@ function TitlePage({ item, onBack }) {
         setCast(normalizeTvCast([...merged.values()]).slice(0, 30))
       })
       .catch((e) => setError(e.message))
-  }, [details, upToSeason, item.id, isTV])
+  }, [details, upToSeason, id, isTV])
 
   if (error) return <SetupNotice message={error} />
   if (!details)
