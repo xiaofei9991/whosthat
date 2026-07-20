@@ -1,0 +1,13 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-display: 'Georgia', 'Times New Roman', serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-zinc-950 text-zinc-100 antialiased;
+}
