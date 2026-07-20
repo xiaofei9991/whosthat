@@ -44,7 +44,11 @@ function ThemeToggle() {
   const toggle = () => {
     const next = !light
     setLight(next)
-    document.documentElement.classList.toggle('light', next)
+    const root = document.documentElement
+    // Crossfade colors during the swap instead of an instant flip.
+    root.classList.add('theme-switching')
+    root.classList.toggle('light', next)
+    window.setTimeout(() => root.classList.remove('theme-switching'), 350)
     try {
       localStorage.setItem('theme', next ? 'light' : 'dark')
     } catch {
@@ -197,24 +201,30 @@ function Home({ onPick }) {
   return (
     <main className="mx-auto max-w-5xl px-4">
       <section className="py-14 text-center sm:py-20">
-        <h1 className="mx-auto max-w-2xl text-4xl font-extrabold tracking-tight sm:text-5xl">
+        <h1 className="animate-fade-up mx-auto max-w-2xl text-4xl font-extrabold tracking-tight sm:text-5xl">
           &ldquo;Wait&hellip; who is that again?&rdquo;
         </h1>
-        <p className="mx-auto mt-4 max-w-xl text-zinc-400">
+        <p
+          className="animate-fade-up mx-auto mt-4 max-w-xl text-zinc-400"
+          style={{ animationDelay: '90ms' }}
+        >
           Look up any movie or show and get a clean character guide — faces, names, and who plays
           them. <span className="text-amber-400">Zero plot spoilers.</span>
         </p>
 
-        <div className="relative mx-auto mt-8 max-w-xl">
+        <div
+          className="animate-fade-up relative mx-auto mt-8 max-w-xl"
+          style={{ animationDelay: '180ms' }}
+        >
           <input
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search a movie or TV show…"
-            className="w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-5 py-4 text-lg outline-none placeholder:text-zinc-500 focus:border-amber-400"
+            className="w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-5 py-4 text-lg outline-none transition duration-200 placeholder:text-zinc-500 focus:border-amber-400 focus:ring-4 focus:ring-amber-400/10"
           />
           {results && (
-            <ul className="absolute z-10 mt-2 w-full overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900 text-left shadow-2xl">
+            <ul className="animate-pop-in absolute z-10 mt-2 w-full overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900 text-left shadow-2xl">
               {results.length === 0 && (
                 <li className="px-5 py-4 text-zinc-500">No results found.</li>
               )}
@@ -251,7 +261,7 @@ function Home({ onPick }) {
             Trending this week
           </h2>
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
-            {trending.map((r) => (
+            {trending.map((r, i) => (
               <a
                 key={`${r.media_type}-${r.id}`}
                 href={titleUrl(r)}
@@ -259,7 +269,8 @@ function Home({ onPick }) {
                   e.preventDefault()
                   onPick(r)
                 }}
-                className="group block text-left"
+                className="animate-fade-up group block text-left"
+                style={{ animationDelay: `${Math.min(i * 45, 500)}ms` }}
               >
                 <Poster
                   path={r.poster_path}
@@ -378,7 +389,7 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
         &larr; Back to search
       </button>
 
-      <div className="flex items-start gap-5">
+      <div className="animate-fade-up flex items-start gap-5">
         <Poster path={details.poster_path} size="w342" className="hidden w-32 rounded-xl sm:block" />
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
@@ -418,7 +429,7 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
         <p className="py-16 text-center text-zinc-500">Filtering out spoilers…</p>
       ) : (
         <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-          {cast.map((c) => (
+          {cast.map((c, i) => (
             <CharacterCard
               key={c.id}
               person={c}
@@ -426,6 +437,7 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
               currentTitleId={details.id}
               titleName={details.title || details.name}
               navigate={navigate}
+              delay={Math.min(i * 40, 600)}
             />
           ))}
         </div>
@@ -444,7 +456,7 @@ function normalizeTvCast(list) {
     .sort((a, b) => b.episodes - a.episodes)
 }
 
-function CharacterCard({ person, isTV, currentTitleId, titleName, navigate }) {
+function CharacterCard({ person, isTV, currentTitleId, titleName, navigate, delay = 0 }) {
   const [open, setOpen] = useState(false)
   const [knownFor, setKnownFor] = useState(null)
 
@@ -463,7 +475,10 @@ function CharacterCard({ person, isTV, currentTitleId, titleName, navigate }) {
   }, [open, knownFor, person.id, currentTitleId])
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900">
+    <div
+      className="animate-fade-up overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 transition duration-200 hover:-translate-y-1 hover:border-amber-400/40 hover:shadow-lg hover:shadow-black/30"
+      style={delay ? { animationDelay: `${delay}ms` } : undefined}
+    >
       <Poster path={person.profile_path} size="w342" className="aspect-3/4 w-full object-cover" />
       <div className="p-3">
         <p className="truncate font-semibold" title={person.character}>
@@ -491,7 +506,7 @@ function CharacterCard({ person, isTV, currentTitleId, titleName, navigate }) {
           {open ? 'Hide' : 'Where do I know them from?'}
         </button>
         {open && (
-          <div className="mt-2">
+          <div className="animate-pop-in mt-2">
             {!knownFor ? (
               <p className="text-xs text-zinc-500">Loading…</p>
             ) : knownFor.length === 0 ? (
@@ -617,11 +632,14 @@ function WhoPlaysPage({ mediaType, mediaId, personId, navigate }) {
         </a>
       </nav>
 
-      <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+      <h1 className="animate-fade-up text-3xl font-bold tracking-tight sm:text-4xl">
         Who plays {character} in {titleName}?
       </h1>
 
-      <div className="mt-6 flex flex-col gap-5 rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:flex-row sm:items-start">
+      <div
+        className="animate-fade-up mt-6 flex flex-col gap-5 rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:flex-row sm:items-start"
+        style={{ animationDelay: '90ms' }}
+      >
         <Poster
           path={person.profile_path}
           size="w342"
@@ -654,7 +672,7 @@ function WhoPlaysPage({ mediaType, mediaId, personId, navigate }) {
       </div>
 
       {knownFor.length > 0 && (
-        <section className="mt-10">
+        <section className="animate-fade-up mt-10" style={{ animationDelay: '180ms' }}>
           <h2 className="mb-4 text-lg font-bold tracking-tight">
             Where else have you seen {person.name}?
           </h2>
@@ -687,7 +705,7 @@ function WhoPlaysPage({ mediaType, mediaId, personId, navigate }) {
       )}
 
       {others.length > 0 && (
-        <section className="mt-10">
+        <section className="animate-fade-up mt-10" style={{ animationDelay: '270ms' }}>
           <h2 className="mb-4 text-lg font-bold tracking-tight">
             Other characters in {titleName}
           </h2>
@@ -728,6 +746,7 @@ function computeAge(birthday, deathday) {
 }
 
 function Poster({ path, size = 'w185', className = '' }) {
+  const [loaded, setLoaded] = useState(false)
   const src = img(path, size)
   if (!src)
     return (
@@ -735,7 +754,19 @@ function Poster({ path, size = 'w185', className = '' }) {
         ?
       </div>
     )
-  return <img src={src} alt="" loading="lazy" className={`shrink-0 bg-zinc-800 object-cover ${className}`} />
+  return (
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      ref={(el) => {
+        // Cached images can be complete before onLoad is attached.
+        if (el?.complete) setLoaded(true)
+      }}
+      onLoad={() => setLoaded(true)}
+      className={`shrink-0 bg-zinc-800 object-cover transition-opacity duration-500 ${loaded ? 'opacity-100' : 'opacity-0'} ${className}`}
+    />
+  )
 }
 
 function SetupNotice({ message }) {
