@@ -24,6 +24,9 @@
   "functions": {
     "api/page.js": {
       "includeFiles": "dist/index.html"
+    },
+    "api/sitemap.js": {
+      "maxDuration": 60
     }
   }
 }

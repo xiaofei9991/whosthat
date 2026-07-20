@@ -1,5 +1,22 @@
 const TMDB_BASE = 'https://api.themoviedb.org/3'
-const SITE = process.env.SITE_ORIGIN || 'https://whosthat-app.vercel.app'
+const SITE = process.env.SITE_ORIGIN || 'https://whosthatcast.com'
+
+// --- Gradual rollout ---------------------------------------------------------
+// A brand-new domain gets a tiny crawl budget; dumping thousands of URLs into
+// the sitemap on day one just piles up "Discovered - not indexed" and risks a
+// thin-content impression. Instead the sitemap grows by RAMP_PER_DAY URLs each
+// day, from RAMP_BASE up to RAMP_MAX, with no manual intervention. URL order is
+// stable and additive: growth only ever appends lower-priority URLs at the
+// tail, it never removes or reshuffles what Google has already seen.
+const RAMP_START_UTC = Date.UTC(2026, 6, 20) // 2026-07-20
+const RAMP_BASE = 1000
+const RAMP_PER_DAY = 60
+const RAMP_MAX = 5000
+
+function currentCap() {
+  const days = Math.max(0, Math.floor((Date.now() - RAMP_START_UTC) / 86400000))
+  return Math.min(RAMP_MAX, RAMP_BASE + days * RAMP_PER_DAY)
+}
 
 // Keep in sync with src/slugify.js (api functions can't import from src/).
 function slugify(text) {
@@ -20,19 +37,25 @@ function escapeXml(s) {
     .replaceAll("'", '&apos;')
 }
 
-const SOURCES = [
-  { path: '/trending/all/week', pages: 2 },
-  { path: '/movie/popular', pages: 3 },
-  { path: '/tv/popular', pages: 3 },
-  { path: '/movie/top_rated', pages: 3 },
-  { path: '/tv/top_rated', pages: 3 },
+// Core sources form the stable head of the sitemap (matches what was submitted
+// to GSC before the ramp existed). Extra sources are the long-tail titles that
+// get released as the cap grows.
+const CORE_SOURCES = [
+  { path: '/trending/all/week', from: 1, to: 2 },
+  { path: '/movie/popular', from: 1, to: 3 },
+  { path: '/tv/popular', from: 1, to: 3 },
+  { path: '/movie/top_rated', from: 1, to: 3 },
+  { path: '/tv/top_rated', from: 1, to: 3 },
+]
+const EXTRA_SOURCES = [
+  { path: '/movie/popular', from: 4, to: 10 },
+  { path: '/tv/popular', from: 4, to: 10 },
+  { path: '/movie/top_rated', from: 4, to: 10 },
+  { path: '/tv/top_rated', from: 4, to: 10 },
 ]
 
-// Titles from these sources also get who-plays question pages in the sitemap.
-const WHO_PLAYS_SOURCES = new Set(['/trending/all/week', '/movie/popular', '/tv/popular'])
-const WHO_PLAYS_TITLE_LIMIT = 60
+const WHO_PLAYS_TITLE_BASE = 60
 const WHO_PLAYS_CAST_LIMIT = 8
-const MAX_URLS = 1000
 
 async function mapInChunks(items, chunkSize, fn) {
   const out = []
@@ -42,49 +65,64 @@ async function mapInChunks(items, chunkSize, fn) {
   return out
 }
 
-export default async function handler(req, res) {
-  const apiKey = process.env.TMDB_API_KEY
-  if (!apiKey) return res.status(500).send('TMDB_API_KEY is not configured')
-
-  const requests = SOURCES.flatMap(({ path, pages }) =>
-    Array.from({ length: pages }, (_, i) => {
+function fetchTitles(sources, apiKey) {
+  const requests = sources.flatMap(({ path, from, to }) =>
+    Array.from({ length: to - from + 1 }, (_, i) => {
       const url = new URL(TMDB_BASE + path)
-      url.searchParams.set('page', String(i + 1))
+      url.searchParams.set('page', String(from + i))
       url.searchParams.set('api_key', apiKey)
-      // Media type is implied by the endpoint except for /trending/all.
       const impliedType = path.startsWith('/movie/') ? 'movie' : path.startsWith('/tv/') ? 'tv' : null
-      const forWhoPlays = WHO_PLAYS_SOURCES.has(path) && (path === '/trending/all/week' || i === 0)
       return fetch(url)
         .then((r) => (r.ok ? r.json() : { results: [] }))
         .then((d) =>
-          (d.results || []).map((item) => ({
-            ...item,
-            media_type: item.media_type || impliedType,
-            forWhoPlays,
-          })),
+          (d.results || []).map((item) => ({ ...item, media_type: item.media_type || impliedType })),
         )
         .catch(() => [])
     }),
   )
+  return Promise.all(requests).then((pages) => pages.flat())
+}
 
-  const items = (await Promise.all(requests)).flat()
+export default async function handler(req, res) {
+  const apiKey = process.env.TMDB_API_KEY
+  if (!apiKey) return res.status(500).send('TMDB_API_KEY is not configured')
+
+  const cap = currentCap()
+
+  const coreItems = await fetchTitles(CORE_SOURCES, apiKey)
+  // Long-tail titles are only worth fetching once the cap outgrows the core set
+  // (~950 core URLs).
+  const extraItems = cap > RAMP_BASE ? await fetchTitles(EXTRA_SOURCES, apiKey) : []
+
+  const coreKeys = new Set(
+    coreItems
+      .filter((i) => i.media_type === 'movie' || i.media_type === 'tv')
+      .map((i) => `${i.media_type}-${i.id}`),
+  )
   const seen = new Set()
-  const urls = [`${SITE}/`]
-  const whoPlaysTitles = []
-  for (const item of items) {
+  const titles = []
+  for (const item of [...coreItems, ...extraItems]) {
     if (item.media_type !== 'movie' && item.media_type !== 'tv') continue
     const key = `${item.media_type}-${item.id}`
     if (seen.has(key)) continue
     seen.add(key)
-    const slug = slugify(item.title || item.name)
-    urls.push(`${SITE}/${item.media_type}/${item.id}${slug ? `/${slug}` : ''}`)
-    if (item.forWhoPlays && whoPlaysTitles.length < WHO_PLAYS_TITLE_LIMIT) whoPlaysTitles.push(item)
+    item._core = coreKeys.has(key)
+    titles.push(item)
   }
 
-  // Who-plays question pages for the top billed cast of the most visible
-  // titles. For TV the details call also yields number_of_seasons, which
-  // feeds the per-season guide URLs.
-  const castLists = await mapInChunks(whoPlaysTitles, 10, (item) => {
+  const titleUrl = (item) => {
+    const slug = slugify(item.title || item.name)
+    return `${SITE}/${item.media_type}/${item.id}${slug ? `/${slug}` : ''}`
+  }
+
+  // Each candidate title yields ~10 extra URLs (8 who-plays + ~2 seasons), so
+  // only fetch the credits we can actually publish under today's cap.
+  const budget = Math.max(0, cap - (1 + titles.length))
+  const beyondBase = Math.max(0, Math.ceil((budget - WHO_PLAYS_TITLE_BASE * 10) / 10))
+  const whoPlaysTitleLimit = Math.min(titles.length, WHO_PLAYS_TITLE_BASE + beyondBase)
+  const candidates = titles.slice(0, whoPlaysTitleLimit)
+
+  const castLists = await mapInChunks(candidates, 15, (item) => {
     const isTV = item.media_type === 'tv'
     const url = isTV
       ? new URL(`${TMDB_BASE}/tv/${item.id}`)
@@ -101,29 +139,45 @@ export default async function handler(req, res) {
       .catch(() => ({ item, cast: [], seasons: 0 }))
   })
 
-  for (const { item, seasons } of castLists) {
-    const titleName = item.title || item.name
-    const slug = slugify(titleName)
-    for (let n = 1; n <= seasons && urls.length < MAX_URLS; n++) {
-      urls.push(`${SITE}/tv/${item.id}/season-${n}${slug ? `/${slug}` : ''}`)
-    }
+  const seasonUrls = (entry) => {
+    const slug = slugify(entry.item.title || entry.item.name)
+    return Array.from(
+      { length: entry.seasons },
+      (_, i) => `${SITE}/tv/${entry.item.id}/season-${i + 1}${slug ? `/${slug}` : ''}`,
+    )
   }
-
-  for (const { item, cast } of castLists) {
-    const isTV = item.media_type === 'tv'
-    const titleName = item.title || item.name
-    for (const c of cast) {
-      if (urls.length >= MAX_URLS) break
+  const whoPlaysUrls = (entry) => {
+    const isTV = entry.item.media_type === 'tv'
+    const titleName = entry.item.title || entry.item.name
+    const out = []
+    for (const c of entry.cast) {
       const character = isTV
         ? (c.roles || []).map((r) => r.character).filter(Boolean).join(' / ')
         : c.character
       if (!character) continue
       const slug = slugify(`who plays ${character} in ${titleName}`)
-      urls.push(
-        `${SITE}/who-plays/${item.media_type}/${item.id}/${c.id}${slug ? `/${slug}` : ''}`,
-      )
+      out.push(`${SITE}/who-plays/${entry.item.media_type}/${entry.item.id}/${c.id}${slug ? `/${slug}` : ''}`)
     }
+    return out
   }
+
+  // Stable, additive ordering: the head reproduces the pre-ramp sitemap, and
+  // everything the ramp releases later only appends after it. Core-title
+  // groups must come before any extra-title URLs so that a growing candidate
+  // list never shifts the position of URLs Google has already seen.
+  const headEntries = castLists.slice(0, WHO_PLAYS_TITLE_BASE)
+  const tailEntries = castLists.slice(WHO_PLAYS_TITLE_BASE)
+  const tailCore = tailEntries.filter((e) => e.item._core)
+  const tailExtra = tailEntries.filter((e) => !e.item._core)
+  const urls = [
+    `${SITE}/`,
+    ...titles.filter((t) => t._core).map(titleUrl),
+    ...headEntries.flatMap(seasonUrls),
+    ...headEntries.flatMap(whoPlaysUrls),
+    ...tailCore.flatMap((e) => [...seasonUrls(e), ...whoPlaysUrls(e)]),
+    ...titles.filter((t) => !t._core).map(titleUrl),
+    ...tailExtra.flatMap((e) => [...seasonUrls(e), ...whoPlaysUrls(e)]),
+  ].slice(0, cap)
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
