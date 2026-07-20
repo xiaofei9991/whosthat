@@ -6,6 +6,31 @@
 
 html {
   scroll-behavior: smooth;
+  color-scheme: dark;
+}
+
+/*
+ * Light mode works by remapping the zinc/amber palette variables instead of
+ * adding `dark:` variants to every class. The design is dark-first, so in
+ * light mode the neutral scale is inverted (950 = page bg becomes near-white)
+ * and the amber accents are darkened for readable contrast on white.
+ */
+html.light {
+  color-scheme: light;
+
+  --color-zinc-950: #fafafa;
+  --color-zinc-900: #ffffff;
+  --color-zinc-800: #e4e4e7;
+  --color-zinc-700: #d4d4d8;
+  --color-zinc-600: #71717a;
+  --color-zinc-500: #52525b;
+  --color-zinc-400: #3f3f46;
+  --color-zinc-300: #3f3f46;
+  --color-zinc-200: #27272a;
+  --color-zinc-100: #18181b;
+
+  --color-amber-400: #d97706;
+  --color-amber-300: #92400e;
 }
 
 body {

@@ -5,6 +5,13 @@
     <meta name="google-site-verification" content="Yz609TqAek0NVdCnfPn2WtSPECxZZGVWILYvHJ-B7QU" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Apply saved theme before first paint to avoid a flash of the wrong theme.
+      try {
+        if (localStorage.getItem('theme') === 'light')
+          document.documentElement.classList.add('light')
+      } catch (e) {}
+    </script>
     <title>Who's That? — Spoiler-Free Character Guide for Movies & TV</title>
     <meta
       name="description"
