@@ -51,6 +51,55 @@ function breadcrumbLd(items) {
   }
 }
 
+// Static-page meta. FAQ answers are duplicated from src/App.jsx STATIC_PAGES
+// (api functions can't import from src/); keep the two in sync.
+const STATIC_META = {
+  about: {
+    title: "About | Who's That?",
+    description:
+      "Who's That? answers \u201cwait, who is that again?\u201d without ruining the story — spoiler-free cast & character guides for any movie or TV show.",
+    h1: "About Who's That?",
+  },
+  faq: {
+    title: "FAQ | Who's That?",
+    description:
+      "Frequently asked questions about Who's That? — the spoiler-free character guide: how the spoiler shield works, where the data comes from, and more.",
+    h1: 'Frequently asked questions',
+    faqs: [
+      [
+        "What is Who's That?",
+        'A spoiler-free character guide for movies and TV shows. Search any title and see every character\u2019s face, name, and actor — with no plot details, episode recaps, or accidental spoilers.',
+      ],
+      [
+        'How does the spoiler shield work?',
+        'On any TV show page, tell us the last season (and episode) you watched. We then only show characters who have already appeared up to that point, using per-season and per-episode cast data — so a character who first shows up later stays hidden.',
+      ],
+      [
+        'Is it free?',
+        'Yes. The core guide is free to use, no account needed. Your watch progress is saved on your own device.',
+      ],
+      [
+        'Can I install it as an app?',
+        'Yes — Who\u2019s That? is a PWA. In your browser, choose \u201cAdd to Home Screen\u201d (mobile) or \u201cInstall\u201d (desktop) to get it as an app.',
+      ],
+      [
+        'Where does the data come from?',
+        'All cast, character, and image data comes from TMDB (themoviedb.org). This product uses the TMDB API but is not endorsed or certified by TMDB.',
+      ],
+      [
+        'I found wrong or missing cast data. Can you fix it?',
+        'Data comes directly from TMDB, which is community-edited — you can fix it at themoviedb.org and the change will show up here automatically.',
+      ],
+    ],
+  },
+  privacy: {
+    title: "Privacy Policy | Who's That?",
+    description:
+      "Who's That? privacy policy: no accounts, no sign-ups, watch progress stays on your device, cookie-free analytics.",
+    h1: 'Privacy policy',
+  },
+}
+
 // Normalizes movie credits and tv aggregate_credits to { character, name }.
 function extractCast(details, isTV) {
   const raw = (isTV ? details.aggregate_credits : details.credits)?.cast || []
@@ -80,6 +129,49 @@ export default async function handler(req, res) {
     res.setHeader('content-type', 'text/html; charset=utf-8')
     res.setHeader('cache-control', 'public, s-maxage=300, stale-while-revalidate=86400')
     res.status(200).send(html)
+  }
+
+  // Static pages: proper canonical/meta + FAQPage JSON-LD, so they don't
+  // inherit the homepage canonical baked into dist/index.html.
+  const staticMeta = req.query.kind === 'static' ? STATIC_META[String(req.query.page)] : null
+  if (staticMeta) {
+    const canonical = `${SITE}/${req.query.page}`
+    const extras = [
+      `<link rel="canonical" href="${escapeHtml(canonical)}" />`,
+      `<meta property="og:type" content="website" />`,
+      `<meta property="og:title" content="${escapeHtml(staticMeta.title)}" />`,
+      `<meta property="og:description" content="${escapeHtml(staticMeta.description)}" />`,
+      `<meta property="og:url" content="${escapeHtml(canonical)}" />`,
+      staticMeta.faqs
+        ? `<script type="application/ld+json">${JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'FAQPage',
+            mainEntity: staticMeta.faqs.map(([q, a]) => ({
+              '@type': 'Question',
+              name: q,
+              acceptedAnswer: { '@type': 'Answer', text: a },
+            })),
+          }).replaceAll('<', '\\u003c')}</script>`
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n    ')
+    const block = `<h1>${escapeHtml(staticMeta.h1)}</h1>
+      ${(staticMeta.faqs || [])
+        .map(([q, a]) => `<h2>${escapeHtml(q)}</h2>\n      <p>${escapeHtml(a)}</p>`)
+        .join('\n      ')}
+      <p><a href="/">Who's That? — spoiler-free character guides for movies &amp; TV</a></p>`
+    const out = html
+      .replace(/<title>.*?<\/title>/s, `<title>${escapeHtml(staticMeta.title)}</title>`)
+      .replace(
+        /<meta\s+name="description"[^>]*>/s,
+        `<meta name="description" content="${escapeHtml(staticMeta.description)}" />`,
+      )
+      .replace('</head>', `    ${extras}\n  </head>`)
+      .replace('<div id="root"></div>', `<div id="root">${block}</div>`)
+    res.setHeader('content-type', 'text/html; charset=utf-8')
+    res.setHeader('cache-control', 'public, s-maxage=86400, stale-while-revalidate=604800')
+    return res.status(200).send(out)
   }
 
   // Rewrites in vercel.json pass type + id (and kind/personId/season for

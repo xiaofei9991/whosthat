@@ -967,24 +967,7 @@ function StaticPage({ page, navigate }) {
     setCanonical(`${window.location.origin}/${page}`)
   }, [content, page])
 
-  // FAQPage rich-result markup. Client-side is enough: Google renders JS, and
-  // /faq is served as static index.html with no server-side injection.
-  useEffect(() => {
-    if (!content.faqs) return
-    const script = document.createElement('script')
-    script.type = 'application/ld+json'
-    script.text = JSON.stringify({
-      '@context': 'https://schema.org',
-      '@type': 'FAQPage',
-      mainEntity: content.faqs.map(([q, a]) => ({
-        '@type': 'Question',
-        name: q,
-        acceptedAnswer: { '@type': 'Answer', text: a },
-      })),
-    })
-    document.head.appendChild(script)
-    return () => script.remove()
-  }, [content])
+  // FAQPage JSON-LD is injected server-side by api/page.js (kind=static).
 
   return (
     <main className="animate-fade-up mx-auto max-w-2xl px-4 py-12">
