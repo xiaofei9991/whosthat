@@ -1,4 +1,12 @@
 {
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "whosthat-app.vercel.app" }],
+      "destination": "https://whosthatcast.com/:path*",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
       "source": "/who-plays/:type/:mediaId/:personId/:slug*",
