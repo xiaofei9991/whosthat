@@ -1,5 +1,5 @@
 const TMDB_BASE = 'https://api.themoviedb.org/3'
-const SITE = 'https://whosthat-app.vercel.app'
+const SITE = process.env.SITE_ORIGIN || 'https://whosthat-app.vercel.app'
 
 // Keep in sync with src/slugify.js (api functions can't import from src/).
 function slugify(text) {
