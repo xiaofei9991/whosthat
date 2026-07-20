@@ -1,6 +1,6 @@
 # "Who's That?" — Launch Copy
 
-所有对外文案（英文）+ 每节附中文使用说明。链接目前用 `https://whosthat-app.vercel.app`，域名迁移到 `whosthatcast.com` 后全局替换即可。
+所有对外文案（英文）+ 每节附中文使用说明。链接已使用正式域名 `https://whosthatcast.com`（2026-07-21 更新：文案已同步集级剧透护盾、进度记忆等新功能）。
 
 ---
 
@@ -12,9 +12,9 @@ Hey — I saw this post a while back and it stuck with me. I ended up building i
 
 It's called "Who's That?" — you search any movie or TV show and get a wall of character cards: photo, character name, actor name, how many episodes they're in. So when someone shows up on screen and you're lost, you can check in a few seconds without reading a plot summary.
 
-The part I spent the most time on is spoilers: for TV shows you can set "I've watched up to season 3" and it hides every character who appears later. No accidental "oh, so THAT person becomes important."
+The part I spent the most time on is spoilers: for TV shows you can set "I've watched up to S3 E5" — down to the exact episode — and it hides every character who appears later. No accidental "oh, so THAT person becomes important." It also remembers where you left off, so next time you open a show it's already filtered.
 
-It's free, no signup, no ads, works on your phone: https://whosthat-app.vercel.app
+It's free, no signup, no ads, works on your phone: https://whosthatcast.com
 
 I don't have prosopagnosia myself, so I've mostly been guessing at what actually helps vs. what just looks nice. If you (or anyone else reading this) try it and something is confusing or missing, I'd genuinely love to hear it — you're the person I built this for.
 
@@ -35,14 +35,14 @@ A while ago I saw a post on r/SomebodyMakeThis from someone with prosopagnosia (
 That seemed like a real problem worth a few days, so I built "Who's That?":
 
 - Search any movie or show → a wall of character cards (photo, character name, actor, episode count)
-- For TV: set "I've watched up to season N" and everyone who appears later is hidden. That's the whole point — you can look someone up mid-episode without getting spoiled.
+- For TV: set "I've watched up to S3 E5" — down to the exact episode — and everyone who appears later is hidden. That's the whole point — you can look someone up mid-episode without getting spoiled. It remembers your progress per show.
 - Tap any actor → "where do I know them from?" — their other notable roles
 
 And honestly, you don't need face blindness to want this. Anyone who's watched an ensemble show ("wait, is that the guy from episode 2?") has this problem.
 
 Stack: Vite + React, TMDB API for the data, deployed on Vercel. Total budget so far: $0. Built the first working version in a few days, leaning heavily on AI for the boring parts.
 
-Link: https://whosthat-app.vercel.app
+Link: https://whosthatcast.com
 
 It's free, no account, no ads. Would love feedback — especially on whether the spoiler shield actually feels trustworthy, because that's the feature everything else depends on.
 
@@ -77,10 +77,10 @@ Hi everyone. I want to be upfront: I don't have prosopagnosia. A while back, som
 What it does:
 
 - Search a movie or show and see every character as a card: photo, character name, actor name, episode count — so you can match a face to a name quickly, mid-episode
-- For TV shows, you set "I've watched up to season N" and characters who only appear later are hidden completely
+- For TV shows, you set "I've watched up to season N, episode M" and characters who only appear later are hidden completely — it remembers where you are in each show
 - You can expand an actor to see their other roles ("where do I know them from")
 
-It's free, there's no signup, no ads, and it works on phones: https://whosthat-app.vercel.app
+It's free, there's no signup, no ads, and it works on phones: https://whosthatcast.com
 
 What I'd really like from this community, if you're willing: tell me where it falls short. I've been designing around my *guess* of what's useful — for example, are photos alone enough, or would things like "distinctive features" descriptions (hair, glasses, voice) help more? Is anything about the layout hard to use? I'll read every reply, and I'm happy to build what's actually needed rather than what I assumed.
 
@@ -100,15 +100,15 @@ Show HN: Who's That? – A spoiler-free character guide for movies and TV
 
 Hi HN. This started with a Reddit post from someone with prosopagnosia (face blindness) who said they couldn't enjoy TV because they can't tell characters apart, and every way of looking someone up — IMDb, fan wikis, Google — is full of spoilers. That seemed like a well-defined problem, so I built this.
 
-What it does: search any movie or show, get a grid of character cards (photo, character name, actor, episode count). For TV shows you set "I've watched up to season N" and it hides any character who first appears after that point. You can also expand an actor to see their other notable work, and each character has a stable "who plays X in Y" page.
+What it does: search any movie or show, get a grid of character cards (photo, character name, actor, episode count). For TV shows you set "I've watched up to S3 E5" — down to the exact episode — and it hides any character who first appears after that point. It remembers your progress per show. You can also expand an actor to see their other notable work, and each character has a stable "who plays X in Y" page.
 
 How it works:
 
-- Vite + React SPA, data from the TMDB API (aggregate_credits gives per-season episode data, which is what the spoiler logic filters on)
-- Deployed on Vercel; a small serverless function injects per-page meta tags/OG data into the SPA shell so the "who plays X in Y" pages are indexable and unfurl properly
-- The spoiler shield is intentionally conservative: if I can't determine which season a character first appears in, they stay hidden rather than risk leaking
+- Vite + React SPA, data from the TMDB API. Season-level filtering uses per-season aggregate_credits; episode-level filtering merges per-episode credits (including guest stars) for the partial season, so a character who debuts in E6 never leaks when you're on E5
+- Deployed on Vercel; a small serverless function injects per-page meta tags/OG/JSON-LD into the SPA shell so title, per-season, and "who plays X in Y" pages are indexable and unfurl properly
+- The spoiler shield is intentionally conservative: if I can't determine when a character first appears, they stay hidden rather than risk leaking
 
-Honest limitations: it's only as good as TMDB's data, which is great for popular shows and spottier for older or niche ones. Guest characters with sparse credits can be mislabeled or missing. And the season-level filter can't catch spoilers *within* a season you've marked as watched (e.g. a character's photo showing a late-season appearance).
+Honest limitations: it's only as good as TMDB's data, which is great for popular shows and spottier for older or niche ones. Guest characters with sparse credits can be mislabeled or missing. And a character's *photo* is whatever TMDB serves, which occasionally reflects a later-season look.
 
 Free, no signup, no ads, no tracking beyond basic analytics. I'd appreciate feedback on edge cases in the spoiler logic — that's the part that has to be trustworthy or the whole thing is pointless.
 
@@ -128,7 +128,7 @@ Spoiler-free character guides for any movie or show
 
 **Short description:**
 
-Search any movie or TV show and see every character at a glance — photo, name, actor, and where else you know them from. Watching a series? Tell it which season you're on and it hides everyone who appears later. Free, no signup, built for anyone who's ever asked "wait, who is that again?" — including the ~2% of people with face blindness.
+Search any movie or TV show and see every character at a glance — photo, name, actor, and where else you know them from. Watching a series? Tell it exactly where you are — down to the episode — and it hides everyone who appears later, and remembers your progress. Free, no signup, works as an app (PWA), in English and Chinese. Built for anyone who's ever asked "wait, who is that again?" — including the ~2% of people with face blindness.
 
 **First comment (maker):**
 
@@ -136,7 +136,7 @@ Hey Product Hunt 👋
 
 "Who's That?" exists because of a single Reddit post: someone with prosopagnosia (face blindness) asked for a way to follow movies and shows without spoiling themselves, because they can't tell characters apart and looking anyone up on IMDb or a wiki is a spoiler minefield.
 
-So the core feature is the spoiler shield: pick "I've watched up to season N" and every character from later seasons is hidden. Beyond that, you get a card wall for any title (photo, character, actor, episode count) and a "where do I know them from?" expansion for every actor.
+So the core feature is the spoiler shield: pick "I've watched up to S3 E5" — down to the exact episode — and every character who appears later is hidden. It remembers your progress per show. Beyond that, you get a card wall for any title (photo, character, actor, episode count) and a "where do I know them from?" expansion for every actor.
 
 It turned out the audience is much bigger than face-blind viewers — basically anyone watching an ensemble show with a big cast.
 
@@ -172,7 +172,7 @@ Mid-episode "wait, who is this??" → answered in 5 seconds, no plot summaries, 
 
 The key feature: a spoiler shield.
 
-Watching a series? Set "I've watched up to season 3" and every character who shows up later is hidden. You can browse the entire cast without a single spoiler.
+Watching a series? Set "I've watched up to S3 E5" — down to the exact episode — and every character who shows up later is hidden. You can browse the entire cast without a single spoiler.
 
 **Tweet 4:**
 
@@ -180,7 +180,7 @@ Also: tap any actor to see where else you know them from. That "is that the guy 
 
 Free. No signup. No ads. Works on your phone.
 
-https://whosthat-app.vercel.app
+https://whosthatcast.com
 
 **Tweet 5:**
 
