@@ -25,6 +25,8 @@
 
 ## UI 约定
 
+**完整设计契约见 `DESIGN.md`（颜色/字体/间距/组件/动效/禁忌），改 UI 前必读。** 以下是最容易踩的几条：
+
 - 深色优先设计。浅色模式通过 `html.light` 重映射 zinc/amber CSS 变量实现（`src/index.css`），**不要**给组件加 `dark:` 变体
 - 主题切换存 `localStorage.theme`，`index.html` 内联脚本防闪烁
 - 图标用 Reicon 库（github.com/dqev/reicon）的内联 SVG，24×24 viewBox：logo/favicon 用 `face-scan-circle`，主题切换用 `sun`/`moon`
