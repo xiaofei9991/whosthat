@@ -46,7 +46,9 @@
 - **OG 卡片**：`api/og.js`（edge runtime + @vercel/og，React.createElement 写法，无 JSX）；改版式时注意 satori 只支持 flex 布局
 - **PWA**：vite-plugin-pwa 配置在 `vite.config.js`；图标改动后跑 `node scripts/generate-icons.mjs` 重新生成 PNG。注意：本地沙箱构建会因 terser worker 被限制而失败，需完整权限运行 `npm run build`。**坑**：自定义 `workbox` 配置会覆盖 autoUpdate 的默认值，必须显式写 `skipWaiting: true, clientsClaim: true`，否则新部署的 SW 永远停在 waiting、老用户拿不到新版本
 - **每季指南页**：`/tv/:id/season-:n/:slug`（SeasonPage 组件 + api/page.js `kind=season` 注入 TVSeason JSON-LD + sitemap 含季 URL）；剧集页有 "Season guides" 内链行
-- **静态页**：/about、/faq、/privacy（`STATIC_PAGES` 常量渲染，vercel.json 有对应 rewrite 到 index.html）；这些是 AdSense 审核的前提
+- **静态页**：/about、/faq、/privacy（客户端 `STATIC_PAGES` 常量渲染；服务端走 api/page.js `kind=static` 注入各自 canonical + FAQPage JSON-LD + 爬虫内容，FAQ 文案改动要同步 api/page.js 的 `STATIC_META`）；这些是 AdSense 审核的前提
+- **首页 SEO 注入**：构建后置步骤 `scripts/inject-home-seo.mjs` 往 dist/index.html 写入 canonical/OG/WebSite JSON-LD + 本周热门 18 条爬虫可见内链（HOME-HEAD/HOME-BODY 注释标记包裹）；api/page.js 用 index.html 做模板前会剥掉这些标记块。**坑**：本地网络偶发连不上 TMDB 时注入 0 条链接（构建不失败），Vercel 构建机上正常
+- **面包屑**：剧集/分季/who-plays 页由 api/page.js 注入 BreadcrumbList JSON-LD
 - **sitemap 自动放量**：`api/sitemap.js` 按天数线性增长（RAMP\_BASE 1000 起步，每天 +20，封顶 5000 约需 200 天，起点 2026-07-20），无需人工干预。**约束**：URL 顺序必须保持「只往尾部追加」（核心标题页 → 头部 60 个剧目的季/who-plays 页 → 尾部核心剧目扩展 → 长尾标题页 → 长尾扩展），改动后跑 `node scripts/test-sitemap.mjs` 验证 `prefix stable: true`。函数 maxDuration 已在 vercel.json 提到 60s（全量时要拉 400+ 个 credits）
 - **i18n（中英）**：`src/i18n.js` 的 `t(key, vars)` + localStorage `wt.lang`（浏览器语言自动检测）。所有新增 UI 文案必须进字典（en+zh 双份），不要写死字符串；切换语言是整页 reload（让 TMDB 按新 `language` 参数重取）。静态页中文版在 `STATIC_PAGES_ZH`。SEO 注入（api/page.js）仍是纯英文，与客户端 i18n 无关
 - **分享/安装**：`ShareButton`（navigator.share，降级复制链接）用在剧集/季/who-plays 页；`InstallButton` 靠 beforeinstallprompt，仅在浏览器认为可安装时出现
