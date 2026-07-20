@@ -75,6 +75,12 @@ export default defineConfig(({ mode }) => {
           ],
         },
         workbox: {
+          // Custom workbox config replaces the plugin's autoUpdate defaults,
+          // so skipWaiting/clientsClaim must be set explicitly or new deploys
+          // sit in the "waiting" state forever and users keep the old bundle.
+          skipWaiting: true,
+          clientsClaim: true,
+          cleanupOutdatedCaches: true,
           // App shell for offline; never intercept server-rendered SEO routes'
           // data or the sitemap. TMDB API responses are cached at runtime.
           navigateFallback: '/index.html',
