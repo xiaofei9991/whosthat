@@ -4,8 +4,12 @@ import { slugify } from './slugify.js'
 
 const DEFAULT_TITLE = "Who's That? — Spoiler-Free Character Guide for Movies & TV"
 
-// Parses /movie/:id/:slug and /tv/:id/:slug; anything else is home.
+// Parses /movie/:id/:slug, /tv/:id/:slug and /who-plays/:type/:mediaId/:personId/:slug;
+// anything else is home.
 function parseRoute(pathname) {
+  const w = pathname.match(/^\/who-plays\/(movie|tv)\/(\d+)\/(\d+)(?:\/|$)/)
+  if (w)
+    return { type: 'whoplays', mediaType: w[1], mediaId: Number(w[2]), personId: Number(w[3]) }
   const m = pathname.match(/^\/(movie|tv)\/(\d+)(?:\/|$)/)
   if (m) return { type: 'title', mediaType: m[1], id: Number(m[2]) }
   return { type: 'home' }
@@ -15,6 +19,11 @@ function titleUrl(item) {
   const type = item.media_type === 'tv' ? 'tv' : 'movie'
   const slug = slugify(item.title || item.name)
   return `/${type}/${item.id}${slug ? `/${slug}` : ''}`
+}
+
+function whoPlaysUrl(mediaType, mediaId, personId, character, titleName) {
+  const slug = slugify(`who plays ${character} in ${titleName}`)
+  return `/who-plays/${mediaType}/${mediaId}/${personId}${slug ? `/${slug}` : ''}`
 }
 
 function setCanonical(url) {
@@ -72,12 +81,21 @@ export default function App() {
 
       {route.type === 'home' ? (
         <Home onPick={(item) => navigate(titleUrl(item))} />
+      ) : route.type === 'whoplays' ? (
+        <WhoPlaysPage
+          key={`${route.mediaType}-${route.mediaId}-${route.personId}`}
+          mediaType={route.mediaType}
+          mediaId={route.mediaId}
+          personId={route.personId}
+          navigate={navigate}
+        />
       ) : (
         <TitlePage
           key={`${route.mediaType}-${route.id}`}
           mediaType={route.mediaType}
           id={route.id}
           onBack={() => navigate('/')}
+          navigate={navigate}
         />
       )}
 
@@ -228,7 +246,7 @@ function Home({ onPick }) {
   )
 }
 
-function TitlePage({ mediaType, id, onBack }) {
+function TitlePage({ mediaType, id, onBack, navigate }) {
   const isTV = mediaType === 'tv'
   const [details, setDetails] = useState(null)
   const [cast, setCast] = useState(null)
@@ -346,7 +364,14 @@ function TitlePage({ mediaType, id, onBack }) {
       ) : (
         <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
           {cast.map((c) => (
-            <CharacterCard key={c.id} person={c} isTV={isTV} currentTitleId={details.id} />
+            <CharacterCard
+              key={c.id}
+              person={c}
+              isTV={isTV}
+              currentTitleId={details.id}
+              titleName={details.title || details.name}
+              navigate={navigate}
+            />
           ))}
         </div>
       )}
@@ -364,7 +389,7 @@ function normalizeTvCast(list) {
     .sort((a, b) => b.episodes - a.episodes)
 }
 
-function CharacterCard({ person, isTV, currentTitleId }) {
+function CharacterCard({ person, isTV, currentTitleId, titleName, navigate }) {
   const [open, setOpen] = useState(false)
   const [knownFor, setKnownFor] = useState(null)
 
@@ -387,7 +412,18 @@ function CharacterCard({ person, isTV, currentTitleId }) {
       <Poster path={person.profile_path} size="w342" className="aspect-3/4 w-full object-cover" />
       <div className="p-3">
         <p className="truncate font-semibold" title={person.character}>
-          {person.character || '—'}
+          <a
+            href={whoPlaysUrl(isTV ? 'tv' : 'movie', currentTitleId, person.id, person.character, titleName)}
+            onClick={(e) => {
+              e.preventDefault()
+              navigate(
+                whoPlaysUrl(isTV ? 'tv' : 'movie', currentTitleId, person.id, person.character, titleName),
+              )
+            }}
+            className="hover:text-amber-400 hover:underline"
+          >
+            {person.character || '—'}
+          </a>
         </p>
         <p className="truncate text-sm text-zinc-400">{person.name}</p>
         {isTV && person.episodes != null && (
@@ -422,6 +458,218 @@ function CharacterCard({ person, isTV, currentTitleId }) {
       </div>
     </div>
   )
+}
+
+function WhoPlaysPage({ mediaType, mediaId, personId, navigate }) {
+  const isTV = mediaType === 'tv'
+  const [details, setDetails] = useState(null)
+  const [person, setPerson] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    setDetails(null)
+    setPerson(null)
+    setError(null)
+    Promise.all([
+      tmdb(`/${mediaType}/${mediaId}`, {
+        append_to_response: isTV ? 'aggregate_credits' : 'credits',
+      }),
+      tmdb(`/person/${personId}`, { append_to_response: 'combined_credits' }),
+    ])
+      .then(([d, p]) => {
+        setDetails(d)
+        setPerson(p)
+      })
+      .catch((e) => setError(e.message))
+  }, [mediaType, mediaId, personId, isTV])
+
+  const titleName = details ? details.title || details.name : null
+  const castList = details ? (isTV ? details.aggregate_credits : details.credits)?.cast || [] : []
+  const credit = castList.find((c) => c.id === personId)
+  const character = credit
+    ? isTV
+      ? credit.roles?.map((r) => r.character).filter(Boolean).join(' / ') || '—'
+      : credit.character || '—'
+    : null
+
+  useEffect(() => {
+    if (!details || !person || !character) return
+    document.title = `Who Plays ${character} in ${titleName}? — ${person.name} | Who's That?`
+    setCanonical(
+      `${window.location.origin}${whoPlaysUrl(mediaType, mediaId, personId, character, titleName)}`,
+    )
+  }, [details, person, character, titleName, mediaType, mediaId, personId])
+
+  if (error) return <SetupNotice message={error} />
+  if (!details || !person)
+    return <p className="py-20 text-center text-zinc-500">Loading answer…</p>
+
+  const titleHref = `/${mediaType}/${mediaId}/${slugify(titleName)}`
+
+  if (!credit) {
+    return (
+      <main className="mx-auto max-w-4xl px-4 py-8">
+        <p className="py-16 text-center text-zinc-500">
+          We couldn&rsquo;t find {person.name} in the cast of {titleName}.{' '}
+          <a
+            href={titleHref}
+            onClick={(e) => {
+              e.preventDefault()
+              navigate(titleHref)
+            }}
+            className="text-amber-400 hover:underline"
+          >
+            See the full cast &rarr;
+          </a>
+        </p>
+      </main>
+    )
+  }
+
+  const age = person.birthday ? computeAge(person.birthday, person.deathday) : null
+
+  const seen = new Set()
+  const knownFor = (person.combined_credits?.cast || [])
+    .filter(
+      (c) =>
+        c.id !== details.id && c.poster_path && !seen.has(c.id) && seen.add(c.id),
+    )
+    .sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0))
+    .slice(0, 6)
+
+  const others = castList
+    .filter((c) => c.id !== personId)
+    .slice(0, 8)
+    .map((c) => ({
+      ...c,
+      character: isTV
+        ? c.roles?.map((r) => r.character).filter(Boolean).join(' / ') || '—'
+        : c.character || '—',
+    }))
+
+  return (
+    <main className="mx-auto max-w-4xl px-4 py-8">
+      <nav className="mb-6 text-sm text-zinc-400">
+        <a
+          href={titleHref}
+          onClick={(e) => {
+            e.preventDefault()
+            navigate(titleHref)
+          }}
+          className="hover:text-amber-400"
+        >
+          &larr; {titleName} cast &amp; characters
+        </a>
+      </nav>
+
+      <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+        Who plays {character} in {titleName}?
+      </h1>
+
+      <div className="mt-6 flex flex-col gap-5 rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:flex-row sm:items-start">
+        <Poster
+          path={person.profile_path}
+          size="w342"
+          className="aspect-3/4 w-40 rounded-xl sm:w-48"
+        />
+        <div className="min-w-0">
+          <p className="text-xl font-semibold">
+            <span className="text-amber-400">{character}</span> is played by{' '}
+            <span className="text-amber-400">{person.name}</span>
+          </p>
+          <ul className="mt-3 space-y-1 text-sm text-zinc-400">
+            {person.birthday && (
+              <li>
+                Born {person.birthday}
+                {age != null && ` (${person.deathday ? `died at ${age}` : `age ${age}`})`}
+              </li>
+            )}
+            {person.place_of_birth && <li>From {person.place_of_birth}</li>}
+            {isTV && credit.total_episode_count != null && (
+              <li>
+                Appears in {credit.total_episode_count} episode
+                {credit.total_episode_count === 1 ? '' : 's'}
+              </li>
+            )}
+          </ul>
+          <p className="mt-3 text-xs text-zinc-500">
+            Spoiler-free: no plot details about {titleName}, just the face and the name.
+          </p>
+        </div>
+      </div>
+
+      {knownFor.length > 0 && (
+        <section className="mt-10">
+          <h2 className="mb-4 text-lg font-bold tracking-tight">
+            Where else have you seen {person.name}?
+          </h2>
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+            {knownFor.map((k) => (
+              <a
+                key={k.id}
+                href={titleUrl(k)}
+                onClick={(e) => {
+                  e.preventDefault()
+                  navigate(titleUrl(k))
+                }}
+                className="group block"
+              >
+                <Poster
+                  path={k.poster_path}
+                  size="w342"
+                  className="aspect-2/3 w-full rounded-xl transition group-hover:scale-[1.03] group-hover:ring-2 group-hover:ring-amber-400"
+                />
+                <span className="mt-1.5 block truncate text-sm text-zinc-300">
+                  {k.title || k.name}
+                </span>
+                {k.character && (
+                  <span className="block truncate text-xs text-zinc-500">as {k.character}</span>
+                )}
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {others.length > 0 && (
+        <section className="mt-10">
+          <h2 className="mb-4 text-lg font-bold tracking-tight">
+            Other characters in {titleName}
+          </h2>
+          <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {others.map((c) => {
+              const href = whoPlaysUrl(mediaType, mediaId, c.id, c.character, titleName)
+              return (
+                <li key={c.id}>
+                  <a
+                    href={href}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      navigate(href)
+                    }}
+                    className="block rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 hover:border-amber-400/50"
+                  >
+                    <span className="block truncate text-sm font-medium">{c.character}</span>
+                    <span className="block truncate text-xs text-zinc-500">{c.name}</span>
+                  </a>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
+    </main>
+  )
+}
+
+function computeAge(birthday, deathday) {
+  const birth = new Date(birthday)
+  if (Number.isNaN(birth.getTime())) return null
+  const end = deathday ? new Date(deathday) : new Date()
+  let age = end.getFullYear() - birth.getFullYear()
+  const m = end.getMonth() - birth.getMonth()
+  if (m < 0 || (m === 0 && end.getDate() < birth.getDate())) age--
+  return age
 }
 
 function Poster({ path, size = 'w185', className = '' }) {
