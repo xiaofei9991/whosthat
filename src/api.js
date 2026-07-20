@@ -1,7 +1,9 @@
+import { tmdbLang } from './i18n.js'
+
 const cache = new Map()
 
 export async function tmdb(path, params = {}) {
-  const qs = new URLSearchParams({ path, ...params })
+  const qs = new URLSearchParams({ path, language: tmdbLang(), ...params })
   const url = `/api/tmdb?${qs}`
   if (cache.has(url)) return cache.get(url)
   const res = await fetch(url)

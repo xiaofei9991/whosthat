@@ -6,10 +6,14 @@ import {
   saveShowProgress,
   removeShowProgress,
   listProgress,
-  formatProgress,
 } from './progress.js'
+import { t, getLang, setLang } from './i18n.js'
 
-const DEFAULT_TITLE = "Who's That? — Spoiler-Free Character Guide for Movies & TV"
+function progressLabel(p) {
+  if (p.season === 'all') return t('prog.whole')
+  if (p.episode && p.episode !== 'all') return t('prog.se', { s: p.season, e: p.episode })
+  return t('prog.season', { n: p.season })
+}
 
 // Parses /movie/:id/:slug, /tv/:id/:slug, /tv/:id/season-:n/:slug,
 // /who-plays/:type/:mediaId/:personId/:slug and static pages; anything else is home.
@@ -52,6 +56,85 @@ function setCanonical(url) {
   link.setAttribute('href', url)
 }
 
+function LangToggle() {
+  const lang = getLang()
+  return (
+    <button
+      onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
+      aria-label={lang === 'zh' ? 'Switch to English' : '切换到中文'}
+      title={lang === 'zh' ? 'Switch to English' : '切换到中文'}
+      className="grid size-9 place-items-center rounded-lg border border-zinc-800 text-xs font-semibold text-zinc-400 transition hover:border-amber-400/50 hover:text-amber-400"
+    >
+      {lang === 'zh' ? 'EN' : '中'}
+    </button>
+  )
+}
+
+function InstallButton() {
+  const [prompt, setPrompt] = useState(null)
+
+  useEffect(() => {
+    const onPrompt = (e) => {
+      e.preventDefault()
+      setPrompt(e)
+    }
+    window.addEventListener('beforeinstallprompt', onPrompt)
+    return () => window.removeEventListener('beforeinstallprompt', onPrompt)
+  }, [])
+
+  if (!prompt) return null
+  return (
+    <button
+      onClick={() => {
+        prompt.prompt()
+        prompt.userChoice.finally(() => setPrompt(null))
+      }}
+      className="hidden rounded-lg border border-zinc-800 px-3 py-2 text-xs font-medium text-zinc-400 transition hover:border-amber-400/50 hover:text-amber-400 sm:block"
+    >
+      {t('install')}
+    </button>
+  )
+}
+
+function ShareButton({ title }) {
+  const [copied, setCopied] = useState(false)
+
+  const share = async () => {
+    const url = window.location.href
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, url })
+        return
+      } catch {
+        /* user cancelled */
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(url)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1600)
+      } catch {
+        /* clipboard unavailable */
+      }
+    }
+  }
+
+  return (
+    <button
+      onClick={share}
+      className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-2.5 py-1 text-sm text-zinc-300 transition hover:border-amber-400/50 hover:text-amber-400"
+    >
+      <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+        <circle cx="6" cy="12" r="2.6" />
+        <circle cx="17" cy="5.5" r="2.6" />
+        <circle cx="17" cy="18.5" r="2.6" />
+        <path d="M8.4 10.8l6.2-3.9M8.4 13.2l6.2 3.9" />
+      </svg>
+      {copied ? t('share.copied') : t('share')}
+    </button>
+  )
+}
+
 function ThemeToggle() {
   const [light, setLight] = useState(() =>
     document.documentElement.classList.contains('light'),
@@ -77,7 +160,7 @@ function ThemeToggle() {
       onClick={toggle}
       aria-label={light ? 'Switch to dark mode' : 'Switch to light mode'}
       title={light ? 'Switch to dark mode' : 'Switch to light mode'}
-      className="ml-auto grid size-9 place-items-center rounded-lg border border-zinc-800 text-zinc-400 transition hover:border-amber-400/50 hover:text-amber-400"
+      className="grid size-9 place-items-center rounded-lg border border-zinc-800 text-zinc-400 transition hover:border-amber-400/50 hover:text-amber-400"
     >
       {light ? (
         <svg viewBox="0 0 24 24" className="size-5" fill="currentColor" aria-hidden="true">
@@ -104,6 +187,10 @@ export default function App() {
   const [route, setRoute] = useState(() => parseRoute(window.location.pathname))
 
   useEffect(() => {
+    document.documentElement.lang = getLang() === 'zh' ? 'zh-CN' : 'en'
+  }, [])
+
+  useEffect(() => {
     const onPopState = () => setRoute(parseRoute(window.location.pathname))
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
@@ -117,8 +204,11 @@ export default function App() {
 
   useEffect(() => {
     if (route.type === 'home') {
-      document.title = DEFAULT_TITLE
+      document.title = t('title.default')
       setCanonical(`${window.location.origin}/`)
+      // Unknown deep paths fall back to home; normalize the URL so the
+      // address bar and canonical don't disagree.
+      if (window.location.pathname !== '/') window.history.replaceState(null, '', '/')
     }
   }, [route])
 
@@ -147,10 +237,12 @@ export default function App() {
             </span>
             Who&rsquo;s That?
           </a>
-          <span className="hidden text-sm text-zinc-500 sm:inline">
-            Spoiler-free character guides for movies &amp; TV
+          <span className="hidden text-sm text-zinc-500 sm:inline">{t('tagline')}</span>
+          <span className="ml-auto flex items-center gap-2">
+            <InstallButton />
+            <LangToggle />
+            <ThemeToggle />
           </span>
-          <ThemeToggle />
         </div>
       </header>
 
@@ -186,9 +278,9 @@ export default function App() {
       <footer className="mx-auto max-w-5xl border-t border-zinc-800/60 px-4 py-10 text-center text-xs text-zinc-600">
         <nav className="mb-3 flex justify-center gap-5 text-sm">
           {[
-            ['/about', 'About'],
-            ['/faq', 'FAQ'],
-            ['/privacy', 'Privacy'],
+            ['/about', t('footer.about')],
+            ['/faq', t('footer.faq')],
+            ['/privacy', t('footer.privacy')],
           ].map(([href, label]) => (
             <a
               key={href}
@@ -203,8 +295,7 @@ export default function App() {
             </a>
           ))}
         </nav>
-        No plot details, ever. Data from TMDB. This product uses the TMDB API but is not endorsed or
-        certified by TMDB.
+        {t('footer.line')}
       </footer>
     </div>
   )
@@ -268,14 +359,13 @@ function Home({ onPick }) {
     <main className="mx-auto max-w-5xl px-4">
       <section className="py-14 text-center sm:py-20">
         <h1 className="animate-fade-up mx-auto max-w-2xl text-4xl font-extrabold tracking-tight sm:text-5xl">
-          &ldquo;Wait&hellip; who is that again?&rdquo;
+          {t('hero.h1')}
         </h1>
         <p
           className="animate-fade-up mx-auto mt-4 max-w-xl text-zinc-400"
           style={{ animationDelay: '90ms' }}
         >
-          Look up any movie or show and get a clean character guide — faces, names, and who plays
-          them. <span className="text-amber-400">Zero plot spoilers.</span>
+          {t('hero.sub')} <span className="text-amber-400">{t('hero.zero')}</span>
         </p>
 
         <div
@@ -291,13 +381,13 @@ function Home({ onPick }) {
             role="combobox"
             aria-expanded={!!results}
             aria-autocomplete="list"
-            placeholder="Search a movie or TV show…"
+            placeholder={t('search.ph')}
             className="w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-5 py-4 text-lg outline-none transition duration-200 placeholder:text-zinc-500 focus:border-amber-400 focus:ring-4 focus:ring-amber-400/10"
           />
           {results && (
             <ul className="animate-pop-in absolute z-10 mt-2 w-full overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900 text-left shadow-2xl">
               {results.length === 0 && (
-                <li className="px-5 py-4 text-zinc-500">No results found.</li>
+                <li className="px-5 py-4 text-zinc-500">{t('search.none')}</li>
               )}
               {results.map((r, i) => (
                 <li key={`${r.media_type}-${r.id}`}>
@@ -316,7 +406,7 @@ function Home({ onPick }) {
                     <span className="min-w-0">
                       <span className="block truncate font-medium">{r.title || r.name}</span>
                       <span className="text-sm text-zinc-500">
-                        {r.media_type === 'tv' ? 'TV' : 'Movie'} ·{' '}
+                        {r.media_type === 'tv' ? t('tv') : t('movie')} ·{' '}
                         {(r.release_date || r.first_air_date || '').slice(0, 4) || '—'}
                       </span>
                     </span>
@@ -332,7 +422,7 @@ function Home({ onPick }) {
       {myShows.length > 0 && (
         <section className="pb-12">
           <h2 className="mb-4 text-sm font-semibold uppercase tracking-widest text-zinc-500">
-            Your shows
+            {t('yourShows')}
           </h2>
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
             {myShows.map((p) => {
@@ -353,15 +443,15 @@ function Home({ onPick }) {
                       className="aspect-2/3 w-full rounded-xl transition group-hover:scale-[1.03] group-hover:ring-2 group-hover:ring-amber-400"
                     />
                     <span className="mt-1.5 block truncate text-sm text-zinc-300">{p.name}</span>
-                    <span className="block text-xs text-amber-400/90">{formatProgress(p)}</span>
+                    <span className="block text-xs text-amber-400/90">{progressLabel(p)}</span>
                   </a>
                   <button
                     onClick={() => {
                       removeShowProgress(p.id)
                       setMyShows(listProgress())
                     }}
-                    aria-label={`Remove ${p.name} from your shows`}
-                    title="Remove"
+                    aria-label={`${t('remove')} ${p.name}`}
+                    title={t('remove')}
                     className="absolute right-1.5 top-1.5 hidden size-6 place-items-center rounded-full bg-zinc-950/80 text-xs text-zinc-300 backdrop-blur hover:bg-zinc-950 hover:text-amber-400 group-hover:grid"
                   >
                     ✕
@@ -376,7 +466,7 @@ function Home({ onPick }) {
       {trending.length > 0 && (
         <section className="pb-16">
           <h2 className="mb-4 text-sm font-semibold uppercase tracking-widest text-zinc-500">
-            Trending this week
+            {t('trending')}
           </h2>
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
             {trending.map((r, i) => (
@@ -405,26 +495,10 @@ function Home({ onPick }) {
       )}
 
       <section className="mx-auto max-w-2xl border-t border-zinc-800/80 pb-16 pt-12">
-        <h2 className="text-xl font-bold tracking-tight text-zinc-200">
-          A spoiler-free cast &amp; character guide for any movie or TV show
-        </h2>
-        <p className="mt-4 text-sm leading-relaxed text-zinc-400">
-          Ever paused a show to ask &ldquo;wait, who is that again?&rdquo; Who&rsquo;s That? shows
-          you every character&rsquo;s face, name, and the actor who plays them — and nothing else.
-          No episode recaps, no plot summaries, no accidental spoilers. It&rsquo;s the fastest way
-          to figure out who plays who without risking the story.
-        </p>
-        <p className="mt-3 text-sm leading-relaxed text-zinc-400">
-          Watching a TV series? Use the spoiler shield to tell us which season you&rsquo;re on, and
-          we&rsquo;ll only show characters who have already appeared — so a surprise season-three
-          arrival never gets revealed early. You can also tap any actor to see where you know them
-          from, spoiler-free.
-        </p>
-        <p className="mt-3 text-sm leading-relaxed text-zinc-400">
-          Whether you lose track of large ensemble casts, mix up look-alike actors, or live with
-          face blindness (prosopagnosia), this guide keeps every face and name one glance away, for
-          any movie or show on any streaming service.
-        </p>
+        <h2 className="text-xl font-bold tracking-tight text-zinc-200">{t('blurb.h2')}</h2>
+        <p className="mt-4 text-sm leading-relaxed text-zinc-400">{t('blurb.p1')}</p>
+        <p className="mt-3 text-sm leading-relaxed text-zinc-400">{t('blurb.p2')}</p>
+        <p className="mt-3 text-sm leading-relaxed text-zinc-400">{t('blurb.p3')}</p>
       </section>
     </main>
   )
@@ -469,7 +543,7 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
     if (!details) return
     const name = details.title || details.name
     const y = (details.release_date || details.first_air_date || '').slice(0, 4)
-    document.title = `${name}${y ? ` (${y})` : ''} Cast & Character Guide — No Spoilers | Who's That?`
+    document.title = t('title.title', { name, y: y ? ` (${y})` : '' })
     setCanonical(
       `${window.location.origin}/${isTV ? 'tv' : 'movie'}/${details.id}/${slugify(name)}`,
     )
@@ -550,7 +624,7 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
 
   if (error) return <SetupNotice message={error} />
   if (!details)
-    return <p className="py-20 text-center text-zinc-500">Loading characters…</p>
+    return <p className="py-20 text-center text-zinc-500">{t('loading.chars')}</p>
 
   const year = (details.release_date || details.first_air_date || '').slice(0, 4)
   const seasonCount = details.number_of_seasons || 0
@@ -562,7 +636,7 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
       <button onClick={onBack} className="mb-6 text-sm text-zinc-400 hover:text-amber-400">
-        &larr; Back to search
+        {t('back')}
       </button>
 
       <div className="animate-fade-up flex items-start gap-5">
@@ -572,17 +646,21 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
             {details.title || details.name}
             {year && <span className="ml-2 font-normal text-zinc-500">({year})</span>}
           </h1>
-          <p className="mt-1 text-zinc-400">
-            {isTV ? `TV series · ${seasonCount} season${seasonCount > 1 ? 's' : ''}` : 'Movie'} ·
-            spoiler-free character guide
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-2 text-zinc-400">
+            {isTV
+              ? seasonCount > 1
+                ? t('meta.tvN', { n: seasonCount })
+                : t('meta.tv1')
+              : t('meta.movie')}
+            <ShareButton title={document.title} />
           </p>
 
           {isTV && seasonCount >= 1 && (
             <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-zinc-300">
               <span className="rounded-md bg-amber-400/15 px-2 py-1 font-medium text-amber-300">
-                Spoiler shield
+                {t('shield.badge')}
               </span>
-              I&rsquo;ve watched up to
+              {t('shield.watched')}
               <select
                 value={upToSeason}
                 onChange={(e) => {
@@ -592,10 +670,10 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
                 }}
                 className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5"
               >
-                <option value="all">the whole show</option>
+                <option value="all">{t('shield.whole')}</option>
                 {Array.from({ length: seasonCount }, (_, i) => (
                   <option key={i + 1} value={i + 1}>
-                    season {i + 1}
+                    {t('shield.season', { n: i + 1 })}
                   </option>
                 ))}
               </select>
@@ -608,24 +686,24 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
                   }}
                   className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5"
                 >
-                  <option value="all">whole season</option>
+                  <option value="all">{t('shield.wholeSeason')}</option>
                   {Array.from({ length: episodeCount }, (_, i) => (
                     <option key={i + 1} value={i + 1}>
-                      episode {i + 1}
+                      {t('shield.episode', { n: i + 1 })}
                     </option>
                   ))}
                 </select>
               )}
-              — only characters who&rsquo;ve already appeared are shown.
+              {t('shield.note')}
               {upToSeason !== 'all' && (
-                <span className="text-xs text-zinc-500">(progress saved)</span>
+                <span className="text-xs text-zinc-500">{t('shield.saved')}</span>
               )}
             </div>
           )}
 
           {isTV && seasonCount >= 1 && (
             <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-              <span className="text-zinc-500">Season guides:</span>
+              <span className="text-zinc-500">{t('seasonGuides')}</span>
               {Array.from({ length: seasonCount }, (_, i) => {
                 const n = i + 1
                 const href = seasonUrl(details.id, n, details.name)
@@ -649,7 +727,7 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
       </div>
 
       {!cast ? (
-        <p className="py-16 text-center text-zinc-500">Filtering out spoilers…</p>
+        <p className="py-16 text-center text-zinc-500">{t('loading.filter')}</p>
       ) : (
         <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
           {cast.map((c, i) => (
@@ -687,13 +765,13 @@ function SeasonPage({ id, season, navigate }) {
 
   useEffect(() => {
     if (!details) return
-    document.title = `${details.name} Season ${season} Characters & Cast — No Spoilers | Who's That?`
+    document.title = t('title.season', { name: details.name, n: season })
     setCanonical(`${window.location.origin}${seasonUrl(id, season, details.name)}`)
   }, [details, id, season])
 
   if (error) return <SetupNotice message={error} />
   if (!details || !cast)
-    return <p className="py-20 text-center text-zinc-500">Loading characters…</p>
+    return <p className="py-20 text-center text-zinc-500">{t('loading.chars')}</p>
 
   const showHref = `/tv/${id}/${slugify(details.name)}`
   const seasonCount = details.number_of_seasons || 0
@@ -709,7 +787,7 @@ function SeasonPage({ id, season, navigate }) {
           }}
           className="hover:text-amber-400"
         >
-          &larr; {details.name} — all seasons
+          &larr; {t('season.all', { name: details.name })}
         </a>
       </nav>
 
@@ -717,14 +795,15 @@ function SeasonPage({ id, season, navigate }) {
         <Poster path={details.poster_path} size="w342" className="hidden w-32 rounded-xl sm:block" />
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
-            {details.name} <span className="text-amber-400">Season {season}</span>
+            {details.name} <span className="text-amber-400">{t('season.label', { n: season })}</span>
           </h1>
-          <p className="mt-1 text-zinc-400">
-            Characters &amp; cast of season {season} only — nothing from later seasons.
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-2 text-zinc-400">
+            {t('season.sub', { n: season })}
+            <ShareButton title={document.title} />
           </p>
           {seasonCount > 1 && (
             <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
-              <span className="text-zinc-500">Seasons:</span>
+              <span className="text-zinc-500">{t('seasonsLabel')}</span>
               {Array.from({ length: seasonCount }, (_, i) => {
                 const n = i + 1
                 const href = seasonUrl(id, n, details.name)
@@ -755,7 +834,7 @@ function SeasonPage({ id, season, navigate }) {
       </div>
 
       {cast.length === 0 ? (
-        <p className="py-16 text-center text-zinc-500">No cast data for this season yet.</p>
+        <p className="py-16 text-center text-zinc-500">{t('season.empty')}</p>
       ) : (
         <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
           {cast.map((c, i) => (
@@ -773,6 +852,57 @@ function SeasonPage({ id, season, navigate }) {
       )}
     </main>
   )
+}
+
+const STATIC_PAGES_ZH = {
+  about: {
+    title: "关于 | Who's That?",
+    heading: '关于 Who\u2019s That?',
+    body: [
+      'Who\u2019s That? 只回答一个问题——\u201c这个人是谁来着？\u201d——而且绝不剧透。搜索任何电影或剧集，就能得到一份干净的角色对照表：每个角色的脸、名字和扮演者，除此之外什么都没有。',
+      '这个产品的灵感来自身边的观众（包括脸盲症患者）在群像剧面前的挣扎：追剧途中去搜某个角色简直是雷区——搜索结果、剧情回顾甚至演员表都会毫不留情地剧透死亡、背叛和第三季才登场的角色。所以我们做了\u201c剧透护盾\u201d：告诉我们你看到哪里，我们只显示已出场的角色。',
+      '角色与演员数据来自社区共建的电影数据库 TMDB。本产品使用 TMDB API，但未经 TMDB 认可或认证。',
+    ],
+  },
+  faq: {
+    title: "常见问题 | Who's That?",
+    heading: '常见问题',
+    faqs: [
+      [
+        'Who\u2019s That? 是什么？',
+        '一份影视剧的无剧透角色指南。搜索任何作品，就能看到每个角色的脸、名字和扮演者——没有剧情信息、没有剧集回顾、没有意外剧透。',
+      ],
+      [
+        '剧透护盾是怎么工作的？',
+        '在任意剧集页面告诉我们你看到第几季（第几集），我们就只显示到那个进度为止已出场的角色，底层使用每季、每集的演员数据——之后才登场的角色会被完全隐藏。',
+      ],
+      ['免费吗？', '免费。核心功能无需注册即可使用，你的观看进度只保存在你自己的设备上。'],
+      [
+        '可以安装成 App 吗？',
+        '可以——Who\u2019s That? 是一个 PWA。在浏览器里选择\u201c添加到主屏幕\u201d（手机）或\u201c安装\u201d（桌面）即可。',
+      ],
+      [
+        '数据从哪来？',
+        '所有演员、角色和图片数据来自 TMDB（themoviedb.org）。本产品使用 TMDB API，但未经 TMDB 认可或认证。',
+      ],
+      [
+        '我发现演员数据有错或缺失，能修吗？',
+        '数据直接来自社区编辑的 TMDB——你可以在 themoviedb.org 上修正，修改会自动同步到这里。',
+      ],
+    ],
+  },
+  privacy: {
+    title: "隐私政策 | Who's That?",
+    heading: '隐私政策',
+    body: [
+      '我们尽可能少地收集数据：没有账号、无需注册，也从不索要个人信息。',
+      '观看进度和主题偏好保存在你浏览器的 localStorage 中，只存在于你的设备上，绝不会发送到我们的服务器。清除浏览器数据或在\u201c我在追的\u201d里移除剧集即可随时删除。',
+      '我们使用 Vercel Web Analytics 了解整体流量（页面浏览量、国家、设备类型）。它不使用 Cookie，不会跨站追踪你，也不会为你建立画像。',
+      '影视数据（含图片）来自 TMDB（themoviedb.org），你的浏览器会直接向 TMDB 的服务器请求图片，适用 TMDB 自己的隐私政策。',
+      '本站托管在 Vercel 上，标准服务器日志（IP 地址、User Agent）可能出于安全和运维目的被处理。',
+      '有问题？欢迎在我们的 GitHub 仓库提 issue。',
+    ],
+  },
 }
 
 const STATIC_PAGES = {
@@ -830,7 +960,7 @@ const STATIC_PAGES = {
 }
 
 function StaticPage({ page, navigate }) {
-  const content = STATIC_PAGES[page]
+  const content = (getLang() === 'zh' ? STATIC_PAGES_ZH : STATIC_PAGES)[page]
 
   useEffect(() => {
     document.title = content.title
@@ -860,7 +990,7 @@ function StaticPage({ page, navigate }) {
           }}
           className="text-amber-400 hover:underline"
         >
-          &larr; Back to search
+          {t('back')}
         </a>
       </p>
     </main>
@@ -918,24 +1048,24 @@ function CharacterCard({ person, isTV, currentTitleId, titleName, navigate, dela
         </p>
         <p className="truncate text-sm text-zinc-400">{person.name}</p>
         {isTV && person.episodes != null && (
-          <p className="mt-0.5 text-xs text-zinc-500">{person.episodes} episodes</p>
+          <p className="mt-0.5 text-xs text-zinc-500">{t('episodes', { n: person.episodes })}</p>
         )}
         <button
           onClick={() => setOpen(!open)}
           className="mt-2 text-xs font-medium text-amber-400 hover:underline"
         >
-          {open ? 'Hide' : 'Where do I know them from?'}
+          {open ? t('card.hide') : t('card.know')}
         </button>
         {open && (
           <div className="animate-pop-in mt-2">
             {!knownFor ? (
-              <p className="text-xs text-zinc-500">Loading…</p>
+              <p className="text-xs text-zinc-500">{t('card.loading')}</p>
             ) : knownFor.length === 0 ? (
-              <p className="text-xs text-zinc-500">Nothing notable found.</p>
+              <p className="text-xs text-zinc-500">{t('card.none')}</p>
             ) : (
               <ul className="grid grid-cols-4 gap-1.5">
                 {knownFor.map((k) => (
-                  <li key={k.credit_id || k.id} title={`${k.title || k.name} — as ${k.character || '?'}`}>
+                  <li key={k.credit_id || k.id} title={`${k.title || k.name} — ${t('wp.as', { c: k.character || '?' })}`}>
                     <Poster path={k.poster_path} className="w-full rounded" />
                     <span className="mt-0.5 block truncate text-[10px] leading-tight text-zinc-400">
                       {k.title || k.name}
@@ -985,7 +1115,7 @@ function WhoPlaysPage({ mediaType, mediaId, personId, navigate }) {
 
   useEffect(() => {
     if (!details || !person || !character) return
-    document.title = `Who Plays ${character} in ${titleName}? — ${person.name} | Who's That?`
+    document.title = t('title.wp', { c: character, t: titleName, p: person.name })
     setCanonical(
       `${window.location.origin}${whoPlaysUrl(mediaType, mediaId, personId, character, titleName)}`,
     )
@@ -993,7 +1123,7 @@ function WhoPlaysPage({ mediaType, mediaId, personId, navigate }) {
 
   if (error) return <SetupNotice message={error} />
   if (!details || !person)
-    return <p className="py-20 text-center text-zinc-500">Loading answer…</p>
+    return <p className="py-20 text-center text-zinc-500">{t('loading.answer')}</p>
 
   const titleHref = `/${mediaType}/${mediaId}/${slugify(titleName)}`
 
@@ -1001,7 +1131,7 @@ function WhoPlaysPage({ mediaType, mediaId, personId, navigate }) {
     return (
       <main className="mx-auto max-w-4xl px-4 py-8">
         <p className="py-16 text-center text-zinc-500">
-          We couldn&rsquo;t find {person.name} in the cast of {titleName}.{' '}
+          {t('wp.notFound', { p: person.name, t: titleName })}{' '}
           <a
             href={titleHref}
             onClick={(e) => {
@@ -1010,7 +1140,7 @@ function WhoPlaysPage({ mediaType, mediaId, personId, navigate }) {
             }}
             className="text-amber-400 hover:underline"
           >
-            See the full cast &rarr;
+            {t('wp.seeFull')}
           </a>
         </p>
       </main>
@@ -1049,12 +1179,12 @@ function WhoPlaysPage({ mediaType, mediaId, personId, navigate }) {
           }}
           className="hover:text-amber-400"
         >
-          &larr; {titleName} cast &amp; characters
+          &larr; {t('wp.back', { t: titleName })}
         </a>
       </nav>
 
       <h1 className="animate-fade-up text-3xl font-bold tracking-tight sm:text-4xl">
-        Who plays {character} in {titleName}?
+        {t('wp.h1', { c: character, t: titleName })}
       </h1>
 
       <div
@@ -1068,34 +1198,38 @@ function WhoPlaysPage({ mediaType, mediaId, personId, navigate }) {
         />
         <div className="min-w-0">
           <p className="text-xl font-semibold">
-            <span className="text-amber-400">{character}</span> is played by{' '}
+            <span className="text-amber-400">{character}</span>
+            {t('wp.playedBy')}
             <span className="text-amber-400">{person.name}</span>
           </p>
           <ul className="mt-3 space-y-1 text-sm text-zinc-400">
             {person.birthday && (
               <li>
-                Born {person.birthday}
-                {age != null && ` (${person.deathday ? `died at ${age}` : `age ${age}`})`}
+                {t('wp.born', { d: person.birthday })}
+                {age != null &&
+                  ` (${person.deathday ? t('wp.diedAt', { n: age }) : t('wp.age', { n: age })})`}
               </li>
             )}
-            {person.place_of_birth && <li>From {person.place_of_birth}</li>}
+            {person.place_of_birth && <li>{t('wp.from', { p: person.place_of_birth })}</li>}
             {isTV && credit.total_episode_count != null && (
               <li>
-                Appears in {credit.total_episode_count} episode
-                {credit.total_episode_count === 1 ? '' : 's'}
+                {credit.total_episode_count === 1
+                  ? t('wp.appears1')
+                  : t('wp.appearsN', { n: credit.total_episode_count })}
               </li>
             )}
           </ul>
-          <p className="mt-3 text-xs text-zinc-500">
-            Spoiler-free: no plot details about {titleName}, just the face and the name.
-          </p>
+          <p className="mt-3 text-xs text-zinc-500">{t('wp.spoilerNote', { t: titleName })}</p>
+          <div className="mt-3">
+            <ShareButton title={document.title} />
+          </div>
         </div>
       </div>
 
       {knownFor.length > 0 && (
         <section className="animate-fade-up mt-10" style={{ animationDelay: '180ms' }}>
           <h2 className="mb-4 text-lg font-bold tracking-tight">
-            Where else have you seen {person.name}?
+            {t('wp.elsewhere', { p: person.name })}
           </h2>
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
             {knownFor.map((k) => (
@@ -1117,7 +1251,9 @@ function WhoPlaysPage({ mediaType, mediaId, personId, navigate }) {
                   {k.title || k.name}
                 </span>
                 {k.character && (
-                  <span className="block truncate text-xs text-zinc-500">as {k.character}</span>
+                  <span className="block truncate text-xs text-zinc-500">
+                    {t('wp.as', { c: k.character })}
+                  </span>
                 )}
               </a>
             ))}
@@ -1128,7 +1264,7 @@ function WhoPlaysPage({ mediaType, mediaId, personId, navigate }) {
       {others.length > 0 && (
         <section className="animate-fade-up mt-10" style={{ animationDelay: '270ms' }}>
           <h2 className="mb-4 text-lg font-bold tracking-tight">
-            Other characters in {titleName}
+            {t('wp.others', { t: titleName })}
           </h2>
           <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {others.map((c) => {
