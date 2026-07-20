@@ -81,18 +81,33 @@ export default async function handler(req, res) {
     if (item.forWhoPlays && whoPlaysTitles.length < WHO_PLAYS_TITLE_LIMIT) whoPlaysTitles.push(item)
   }
 
-  // Who-plays question pages for the top billed cast of the most visible titles.
+  // Who-plays question pages for the top billed cast of the most visible
+  // titles. For TV the details call also yields number_of_seasons, which
+  // feeds the per-season guide URLs.
   const castLists = await mapInChunks(whoPlaysTitles, 10, (item) => {
     const isTV = item.media_type === 'tv'
-    const url = new URL(
-      `${TMDB_BASE}/${item.media_type}/${item.id}/${isTV ? 'aggregate_credits' : 'credits'}`,
-    )
+    const url = isTV
+      ? new URL(`${TMDB_BASE}/tv/${item.id}`)
+      : new URL(`${TMDB_BASE}/movie/${item.id}/credits`)
+    if (isTV) url.searchParams.set('append_to_response', 'aggregate_credits')
     url.searchParams.set('api_key', apiKey)
     return fetch(url)
-      .then((r) => (r.ok ? r.json() : { cast: [] }))
-      .then((d) => ({ item, cast: (d.cast || []).slice(0, WHO_PLAYS_CAST_LIMIT) }))
-      .catch(() => ({ item, cast: [] }))
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((d) => ({
+        item,
+        cast: ((isTV ? d.aggregate_credits?.cast : d.cast) || []).slice(0, WHO_PLAYS_CAST_LIMIT),
+        seasons: isTV ? d.number_of_seasons || 0 : 0,
+      }))
+      .catch(() => ({ item, cast: [], seasons: 0 }))
   })
+
+  for (const { item, seasons } of castLists) {
+    const titleName = item.title || item.name
+    const slug = slugify(titleName)
+    for (let n = 1; n <= seasons && urls.length < MAX_URLS; n++) {
+      urls.push(`${SITE}/tv/${item.id}/season-${n}${slug ? `/${slug}` : ''}`)
+    }
+  }
 
   for (const { item, cast } of castLists) {
     const isTV = item.media_type === 'tv'

@@ -12,9 +12,14 @@
       "source": "/who-plays/:type/:mediaId/:personId/:slug*",
       "destination": "/api/page?kind=whoplays&type=:type&id=:mediaId&personId=:personId"
     },
+    {
+      "source": "/tv/:id/season-:season(\\d+)/:slug*",
+      "destination": "/api/page?kind=season&type=tv&id=:id&season=:season"
+    },
     { "source": "/movie/:id/:slug*", "destination": "/api/page?type=movie&id=:id" },
     { "source": "/tv/:id/:slug*", "destination": "/api/page?type=tv&id=:id" },
-    { "source": "/sitemap.xml", "destination": "/api/sitemap" }
+    { "source": "/sitemap.xml", "destination": "/api/sitemap" },
+    { "source": "/:page(about|faq|privacy)", "destination": "/index.html" }
   ],
   "functions": {
     "api/page.js": {

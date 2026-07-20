@@ -63,14 +63,19 @@ export default async function handler(req, res) {
     res.status(200).send(html)
   }
 
-  // Rewrites in vercel.json pass type + id (and kind/personId for who-plays
-  // pages); fall back to parsing the path.
-  let { kind, type, id, personId } = req.query
+  // Rewrites in vercel.json pass type + id (and kind/personId/season for
+  // who-plays and season pages); fall back to parsing the path.
+  let { kind, type, id, personId, season } = req.query
   if (!type || !id) {
     const w = (req.url || '').match(/\/who-plays\/(movie|tv)\/(\d+)\/(\d+)/)
+    const s = (req.url || '').match(/\/tv\/(\d+)\/season-(\d+)/)
     if (w) {
       kind = 'whoplays'
       ;[, type, id, personId] = w
+    } else if (s) {
+      kind = 'season'
+      type = 'tv'
+      ;[, id, season] = s
     } else {
       const m = (req.url || '').match(/\/(movie|tv)\/(\d+)/)
       if (m) [, type, id] = m
@@ -80,6 +85,7 @@ export default async function handler(req, res) {
     return serveFallback()
   }
   const isWhoPlays = kind === 'whoplays' && /^\d+$/.test(String(personId))
+  const isSeason = kind === 'season' && /^\d+$/.test(String(season))
   const isTV = type === 'tv'
 
   const apiKey = process.env.TMDB_API_KEY
@@ -105,7 +111,63 @@ export default async function handler(req, res) {
 
   let pageTitle, description, canonical, ogType, ogImage, jsonLdList, crawlerBlock
 
-  if (isWhoPlays) {
+  if (isSeason) {
+    const n = Number(season)
+    let seasonCast = []
+    try {
+      const url = new URL(`${TMDB_BASE}/tv/${id}/season/${n}/aggregate_credits`)
+      url.searchParams.set('api_key', apiKey)
+      const r = await fetch(url)
+      if (r.ok)
+        seasonCast = ((await r.json()).cast || []).slice(0, 20).map((c) => ({
+          name: c.name,
+          character: c.roles?.map((r2) => r2.character).filter(Boolean).join(' / ') || '—',
+        }))
+    } catch {
+      /* keep empty cast */
+    }
+    if (n < 1 || n > (details.number_of_seasons || 0)) return serveFallback()
+
+    const showUrl = `/tv/${details.id}/${slugify(name)}`
+    canonical = `${SITE}/tv/${details.id}/season-${n}/${slugify(name)}`
+    pageTitle = `${name} Season ${n} Characters & Cast — No Spoilers | Who's That?`
+    description = `Every character in ${name} season ${n} with photos and the actors who play them${seasonCast[0] ? `, including ${seasonCast.slice(0, 3).map((c) => c.name).join(', ')}` : ''} — spoiler-free, nothing from later seasons.`
+    ogType = 'video.tv_show'
+    ogImage = poster ? `${SITE}/api/og?type=tv&id=${details.id}` : null
+
+    jsonLdList = [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'TVSeason',
+        name: `${name} Season ${n}`,
+        seasonNumber: n,
+        url: canonical,
+        partOfSeries: { '@type': 'TVSeries', name, url: SITE + showUrl },
+        actor: seasonCast.map((c) => ({ '@type': 'Person', name: c.name })),
+      },
+    ]
+
+    const otherSeasons = Array.from(
+      { length: details.number_of_seasons || 0 },
+      (_, i) => i + 1,
+    ).filter((x) => x !== n)
+    crawlerBlock = `<h1>${escapeHtml(`${name} Season ${n} Characters & Cast — No Spoilers`)}</h1>
+      <p>${escapeHtml(description)}</p>
+      <ul>
+        ${seasonCast
+          .map((c) => `<li>${escapeHtml(c.character)} — played by ${escapeHtml(c.name)}</li>`)
+          .join('\n        ')}
+      </ul>
+      <p><a href="${escapeHtml(showUrl)}">All seasons of ${escapeHtml(name)}: full spoiler-free character guide</a></p>
+      <ul>
+        ${otherSeasons
+          .map(
+            (x) =>
+              `<li><a href="/tv/${details.id}/season-${x}/${slugify(name)}">${escapeHtml(name)} season ${x} characters</a></li>`,
+          )
+          .join('\n        ')}
+      </ul>`
+  } else if (isWhoPlays) {
     const rawCast = (isTV ? details.aggregate_credits : details.credits)?.cast || []
     const credit = rawCast.find((c) => c.id === Number(personId))
     if (!credit) return serveFallback()
@@ -184,13 +246,21 @@ export default async function handler(req, res) {
       },
     ]
 
+    const seasonLinks = isTV
+      ? Array.from({ length: details.number_of_seasons || 0 }, (_, i) => i + 1)
+          .map(
+            (n) =>
+              `<li><a href="/tv/${details.id}/season-${n}/${slugify(name)}">${escapeHtml(name)} season ${n} characters &amp; cast</a></li>`,
+          )
+          .join('\n        ')
+      : ''
     crawlerBlock = `<h1>${escapeHtml(pageTitle)}</h1>
       <p>${escapeHtml(description)}</p>
       <ul>
         ${cast
           .map((c) => `<li>${escapeHtml(c.character)} — played by ${escapeHtml(c.name)}</li>`)
           .join('\n        ')}
-      </ul>`
+      </ul>${seasonLinks ? `\n      <ul>\n        ${seasonLinks}\n      </ul>` : ''}`
   }
 
   const headExtras = [

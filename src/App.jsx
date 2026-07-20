@@ -11,15 +11,24 @@ import {
 
 const DEFAULT_TITLE = "Who's That? — Spoiler-Free Character Guide for Movies & TV"
 
-// Parses /movie/:id/:slug, /tv/:id/:slug and /who-plays/:type/:mediaId/:personId/:slug;
-// anything else is home.
+// Parses /movie/:id/:slug, /tv/:id/:slug, /tv/:id/season-:n/:slug,
+// /who-plays/:type/:mediaId/:personId/:slug and static pages; anything else is home.
 function parseRoute(pathname) {
   const w = pathname.match(/^\/who-plays\/(movie|tv)\/(\d+)\/(\d+)(?:\/|$)/)
   if (w)
     return { type: 'whoplays', mediaType: w[1], mediaId: Number(w[2]), personId: Number(w[3]) }
+  const s = pathname.match(/^\/tv\/(\d+)\/season-(\d+)(?:\/|$)/)
+  if (s) return { type: 'season', id: Number(s[1]), season: Number(s[2]) }
   const m = pathname.match(/^\/(movie|tv)\/(\d+)(?:\/|$)/)
   if (m) return { type: 'title', mediaType: m[1], id: Number(m[2]) }
+  const st = pathname.match(/^\/(about|faq|privacy)\/?$/)
+  if (st) return { type: 'static', page: st[1] }
   return { type: 'home' }
+}
+
+function seasonUrl(id, season, name) {
+  const slug = slugify(name)
+  return `/tv/${id}/season-${season}${slug ? `/${slug}` : ''}`
 }
 
 function titleUrl(item) {
@@ -155,6 +164,15 @@ export default function App() {
           personId={route.personId}
           navigate={navigate}
         />
+      ) : route.type === 'season' ? (
+        <SeasonPage
+          key={`season-${route.id}-${route.season}`}
+          id={route.id}
+          season={route.season}
+          navigate={navigate}
+        />
+      ) : route.type === 'static' ? (
+        <StaticPage key={route.page} page={route.page} navigate={navigate} />
       ) : (
         <TitlePage
           key={`${route.mediaType}-${route.id}`}
@@ -165,7 +183,26 @@ export default function App() {
         />
       )}
 
-      <footer className="mx-auto max-w-5xl px-4 py-10 text-center text-xs text-zinc-600">
+      <footer className="mx-auto max-w-5xl border-t border-zinc-800/60 px-4 py-10 text-center text-xs text-zinc-600">
+        <nav className="mb-3 flex justify-center gap-5 text-sm">
+          {[
+            ['/about', 'About'],
+            ['/faq', 'FAQ'],
+            ['/privacy', 'Privacy'],
+          ].map(([href, label]) => (
+            <a
+              key={href}
+              href={href}
+              onClick={(e) => {
+                e.preventDefault()
+                navigate(href)
+              }}
+              className="text-zinc-500 hover:text-amber-400"
+            >
+              {label}
+            </a>
+          ))}
+        </nav>
         No plot details, ever. Data from TMDB. This product uses the TMDB API but is not endorsed or
         certified by TMDB.
       </footer>
@@ -176,10 +213,30 @@ export default function App() {
 function Home({ onPick }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState(null)
+  const [activeIdx, setActiveIdx] = useState(-1)
   const [trending, setTrending] = useState([])
   const [myShows, setMyShows] = useState(() => listProgress())
   const [error, setError] = useState(null)
   const timer = useRef()
+
+  const onKeyDown = (e) => {
+    if (!results || results.length === 0) {
+      if (e.key === 'Escape') setResults(null)
+      return
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActiveIdx((i) => (i + 1) % results.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveIdx((i) => (i <= 0 ? results.length - 1 : i - 1))
+    } else if (e.key === 'Enter' && activeIdx >= 0) {
+      e.preventDefault()
+      onPick(results[activeIdx])
+    } else if (e.key === 'Escape') {
+      setResults(null)
+    }
+  }
 
   useEffect(() => {
     tmdb('/trending/all/week')
@@ -189,6 +246,7 @@ function Home({ onPick }) {
 
   useEffect(() => {
     clearTimeout(timer.current)
+    setActiveIdx(-1)
     if (!query.trim()) {
       setResults(null)
       return
@@ -228,6 +286,11 @@ function Home({ onPick }) {
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onKeyDown}
+            onBlur={() => setTimeout(() => setResults(null), 150)}
+            role="combobox"
+            aria-expanded={!!results}
+            aria-autocomplete="list"
             placeholder="Search a movie or TV show…"
             className="w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-5 py-4 text-lg outline-none transition duration-200 placeholder:text-zinc-500 focus:border-amber-400 focus:ring-4 focus:ring-amber-400/10"
           />
@@ -236,7 +299,7 @@ function Home({ onPick }) {
               {results.length === 0 && (
                 <li className="px-5 py-4 text-zinc-500">No results found.</li>
               )}
-              {results.map((r) => (
+              {results.map((r, i) => (
                 <li key={`${r.media_type}-${r.id}`}>
                   <a
                     href={titleUrl(r)}
@@ -244,7 +307,10 @@ function Home({ onPick }) {
                       e.preventDefault()
                       onPick(r)
                     }}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 hover:bg-zinc-800"
+                    onMouseEnter={() => setActiveIdx(i)}
+                    className={`flex w-full items-center gap-3 px-4 py-2.5 ${
+                      i === activeIdx ? 'bg-zinc-800' : ''
+                    }`}
                   >
                     <Poster path={r.poster_path} className="h-14 w-10 rounded" />
                     <span className="min-w-0">
@@ -556,6 +622,29 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
               )}
             </div>
           )}
+
+          {isTV && seasonCount >= 1 && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-zinc-500">Season guides:</span>
+              {Array.from({ length: seasonCount }, (_, i) => {
+                const n = i + 1
+                const href = seasonUrl(details.id, n, details.name)
+                return (
+                  <a
+                    key={n}
+                    href={href}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      navigate(href)
+                    }}
+                    className="rounded-lg border border-zinc-700 px-2.5 py-1 text-zinc-300 hover:border-amber-400/50 hover:text-amber-400"
+                  >
+                    S{n}
+                  </a>
+                )
+              })}
+            </div>
+          )}
         </div>
       </div>
 
@@ -576,6 +665,204 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
           ))}
         </div>
       )}
+    </main>
+  )
+}
+
+function SeasonPage({ id, season, navigate }) {
+  const [details, setDetails] = useState(null)
+  const [cast, setCast] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    setDetails(null)
+    setCast(null)
+    Promise.all([tmdb(`/tv/${id}`), tmdb(`/tv/${id}/season/${season}/aggregate_credits`)])
+      .then(([d, credits]) => {
+        setDetails(d)
+        setCast(normalizeTvCast(credits.cast || []).slice(0, 30))
+      })
+      .catch((e) => setError(e.message))
+  }, [id, season])
+
+  useEffect(() => {
+    if (!details) return
+    document.title = `${details.name} Season ${season} Characters & Cast — No Spoilers | Who's That?`
+    setCanonical(`${window.location.origin}${seasonUrl(id, season, details.name)}`)
+  }, [details, id, season])
+
+  if (error) return <SetupNotice message={error} />
+  if (!details || !cast)
+    return <p className="py-20 text-center text-zinc-500">Loading characters…</p>
+
+  const showHref = `/tv/${id}/${slugify(details.name)}`
+  const seasonCount = details.number_of_seasons || 0
+
+  return (
+    <main className="mx-auto max-w-5xl px-4 py-8">
+      <nav className="mb-6 text-sm text-zinc-400">
+        <a
+          href={showHref}
+          onClick={(e) => {
+            e.preventDefault()
+            navigate(showHref)
+          }}
+          className="hover:text-amber-400"
+        >
+          &larr; {details.name} — all seasons
+        </a>
+      </nav>
+
+      <div className="animate-fade-up flex items-start gap-5">
+        <Poster path={details.poster_path} size="w342" className="hidden w-32 rounded-xl sm:block" />
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {details.name} <span className="text-amber-400">Season {season}</span>
+          </h1>
+          <p className="mt-1 text-zinc-400">
+            Characters &amp; cast of season {season} only — nothing from later seasons.
+          </p>
+          {seasonCount > 1 && (
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-zinc-500">Seasons:</span>
+              {Array.from({ length: seasonCount }, (_, i) => {
+                const n = i + 1
+                const href = seasonUrl(id, n, details.name)
+                return n === season ? (
+                  <span
+                    key={n}
+                    className="rounded-lg bg-amber-400 px-2.5 py-1 font-medium text-zinc-950"
+                  >
+                    {n}
+                  </span>
+                ) : (
+                  <a
+                    key={n}
+                    href={href}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      navigate(href)
+                    }}
+                    className="rounded-lg border border-zinc-700 px-2.5 py-1 text-zinc-300 hover:border-amber-400/50 hover:text-amber-400"
+                  >
+                    {n}
+                  </a>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {cast.length === 0 ? (
+        <p className="py-16 text-center text-zinc-500">No cast data for this season yet.</p>
+      ) : (
+        <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+          {cast.map((c, i) => (
+            <CharacterCard
+              key={c.id}
+              person={c}
+              isTV
+              currentTitleId={id}
+              titleName={details.name}
+              navigate={navigate}
+              delay={Math.min(i * 40, 600)}
+            />
+          ))}
+        </div>
+      )}
+    </main>
+  )
+}
+
+const STATIC_PAGES = {
+  about: {
+    title: "About | Who's That?",
+    heading: "About Who's That?",
+    body: [
+      "Who's That? answers one question — \u201cwait, who is that again?\u201d — without ruining the story. Look up any movie or TV show and get a clean guide to every character: their face, their name, and the actor who plays them. Nothing else.",
+      'The idea came from watching people (including people with face blindness, or prosopagnosia) struggle with big ensemble casts. Googling a character mid-episode is a minefield: search results, recaps, and even cast lists happily reveal deaths, betrayals, and season-three arrivals. We built the spoiler shield so you can tell us how far you\u2019ve watched, and we\u2019ll only ever show characters who have already appeared.',
+      'Character and cast data comes from TMDB, the community-built movie database. This product uses the TMDB API but is not endorsed or certified by TMDB.',
+    ],
+  },
+  faq: {
+    title: "FAQ | Who's That?",
+    heading: 'Frequently asked questions',
+    faqs: [
+      [
+        "What is Who's That?",
+        'A spoiler-free character guide for movies and TV shows. Search any title and see every character\u2019s face, name, and actor — with no plot details, episode recaps, or accidental spoilers.',
+      ],
+      [
+        'How does the spoiler shield work?',
+        'On any TV show page, tell us the last season (and episode) you watched. We then only show characters who have already appeared up to that point, using per-season and per-episode cast data — so a character who first shows up later stays hidden.',
+      ],
+      [
+        'Is it free?',
+        'Yes. The core guide is free to use, no account needed. Your watch progress is saved on your own device.',
+      ],
+      [
+        'Can I install it as an app?',
+        'Yes — Who\u2019s That? is a PWA. In your browser, choose \u201cAdd to Home Screen\u201d (mobile) or \u201cInstall\u201d (desktop) to get it as an app.',
+      ],
+      [
+        'Where does the data come from?',
+        'All cast, character, and image data comes from TMDB (themoviedb.org). This product uses the TMDB API but is not endorsed or certified by TMDB.',
+      ],
+      [
+        'I found wrong or missing cast data. Can you fix it?',
+        'Data comes directly from TMDB, which is community-edited — you can fix it at themoviedb.org and the change will show up here automatically.',
+      ],
+    ],
+  },
+  privacy: {
+    title: "Privacy Policy | Who's That?",
+    heading: 'Privacy policy',
+    body: [
+      'We collect as little as possible. There are no accounts, no sign-ups, and we never ask for personal information.',
+      'Watch progress and theme preference are stored in your browser\u2019s localStorage, on your device only. They are never sent to our servers. You can clear them anytime by clearing your browser data or removing shows from \u201cYour shows\u201d.',
+      'We use Vercel Web Analytics to understand aggregate traffic (page views, country, device type). It is cookie-free and does not track you across sites or build a profile of you.',
+      'Movie and TV data, including images, is loaded from TMDB (themoviedb.org). Your browser requests images directly from TMDB\u2019s servers, which is subject to TMDB\u2019s own privacy policy.',
+      'This site is hosted on Vercel. Standard server logs (IP address, user agent) may be processed for security and operations.',
+      'Questions? Open an issue on our GitHub repository.',
+    ],
+  },
+}
+
+function StaticPage({ page, navigate }) {
+  const content = STATIC_PAGES[page]
+
+  useEffect(() => {
+    document.title = content.title
+    setCanonical(`${window.location.origin}/${page}`)
+  }, [content, page])
+
+  return (
+    <main className="animate-fade-up mx-auto max-w-2xl px-4 py-12">
+      <h1 className="text-3xl font-bold tracking-tight">{content.heading}</h1>
+      {content.body?.map((p, i) => (
+        <p key={i} className="mt-4 text-sm leading-relaxed text-zinc-400">
+          {p}
+        </p>
+      ))}
+      {content.faqs?.map(([q, a]) => (
+        <section key={q} className="mt-6">
+          <h2 className="font-semibold text-zinc-200">{q}</h2>
+          <p className="mt-1.5 text-sm leading-relaxed text-zinc-400">{a}</p>
+        </section>
+      ))}
+      <p className="mt-10 text-sm">
+        <a
+          href="/"
+          onClick={(e) => {
+            e.preventDefault()
+            navigate('/')
+          }}
+          className="text-amber-400 hover:underline"
+        >
+          &larr; Back to search
+        </a>
+      </p>
     </main>
   )
 }
