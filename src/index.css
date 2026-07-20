@@ -61,12 +61,20 @@ body {
   }
 }
 
+/*
+ * fill-mode is `backwards`, NOT `both`/`forwards`: a retained fill value keeps
+ * a `transform` applied forever, which (a) creates a permanent stacking
+ * context that traps children's z-index (search dropdown got covered by
+ * later content) and (b) overrides hover transforms, since animation fill
+ * values beat normal declarations in the cascade. `backwards` only fills
+ * during the delay, then hands control back to regular styles.
+ */
 .animate-fade-up {
-  animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 .animate-pop-in {
-  animation: pop-in 0.18s ease-out both;
+  animation: pop-in 0.18s ease-out backwards;
 }
 
 /* Smoothly crossfade every surface while the theme class flips. */

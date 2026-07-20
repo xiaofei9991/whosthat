@@ -213,7 +213,7 @@ function Home({ onPick }) {
         </p>
 
         <div
-          className="animate-fade-up relative mx-auto mt-8 max-w-xl"
+          className="animate-fade-up relative z-10 mx-auto mt-8 max-w-xl"
           style={{ animationDelay: '180ms' }}
         >
           <input
