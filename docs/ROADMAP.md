@@ -47,11 +47,11 @@ V1 唯一目标：**让 Google 能收录、让种子用户能用**。不加任�
 
 按投入产出比排序，逐个上线：
 
-1. **"Who plays X in Y" pSEO 页面**——每个角色一个问题页（详见 §3）。这是流量杠杆最大的一项，优先做。
-2. **集级 spoiler shield**——从"看到第 N 季"细化到"看到第 N 季第 E 集"。TMDB 有 per-episode guest star 数据，正是与手工媒体文章拉开差距的功能。
-3. **分享卡片（OG image）**——为每个片/角色页动态生成 OG 图（`@vercel/og`，免费额度内），Reddit/Twitter 分享时自带精美卡片，降低传播摩擦。
-4. **Watchlist / 观看进度记忆**——localStorage 起步，记住每部剧"看到哪了"，回访时 spoiler shield 自动就位。零后端成本，制造回访黏性（为 DAU 与后续订阅铺路）。
-5. **PWA**——manifest + service worker，脸盲用户可"装"到手机主屏。成本半天，社区好感度高。
+1. ✅ **"Who plays X in Y" pSEO 页面**——每个角色一个问题页（详见 §3）。这是流量杠杆最大的一项，优先做。
+2. ✅ **集级 spoiler shield**——从"看到第 N 季"细化到"看到第 N 季第 E 集"。实现：整季用 season aggregate_credits，零头集数逐集拉 episode credits（含 guest stars）合并。
+3. ✅ **分享卡片（OG image）**——`api/og.js`（edge + `@vercel/og`）动态生成 1200×630 卡片，`api/page.js` 已接入 og:image。
+4. ✅ **Watchlist / 观看进度记忆**——`src/progress.js`（localStorage），剧集页 shield 选择自动保存并在回访时恢复，首页新增 "Your shows" 区块。
+5. ✅ **PWA**——vite-plugin-pwa（autoUpdate + workbox 运行时缓存 TMDB API/图片），图标由 `scripts/generate-icons.mjs` 生成。
 6. **多语言（中英）**——先做界面 i18n + TMDB 的 zh-CN 数据。中文市场不是变现主战场，但成本低、可覆盖华语流媒体观众，且验证 i18n 架构为后续小语种（西/葡/德）SEO 铺路。
 
 ### V3 — 变现版（第 9 周起，前提：V2 指标达标）

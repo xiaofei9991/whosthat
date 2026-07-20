@@ -37,6 +37,13 @@
 - TMDB 免费 key 仅限非商业使用，**上广告前必须先谈商用授权**（见 ROADMAP §4）
 - 页脚必须保留 TMDB 署名（API 条款要求）
 
+## V2 已上线功能（2026-07-20）
+
+- **集级 spoiler shield**：整季走 `season/{n}/aggregate_credits`，零头集数逐集拉 `episode/{e}/credits`（cast + guest_stars）合并
+- **进度记忆**：`src/progress.js`，localStorage key `wt.progress`；剧集页自动恢复 shield，首页 "Your shows" 区块
+- **OG 卡片**：`api/og.js`（edge runtime + @vercel/og，React.createElement 写法，无 JSX）；改版式时注意 satori 只支持 flex 布局
+- **PWA**：vite-plugin-pwa 配置在 `vite.config.js`；图标改动后跑 `node scripts/generate-icons.mjs` 重新生成 PNG。注意：本地沙箱构建会因 terser worker 被限制而失败，需完整权限运行 `npm run build`
+
 ## 常用命令
 
 ```bash
