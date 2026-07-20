@@ -3,7 +3,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const TMDB_BASE = 'https://api.themoviedb.org/3'
-const SITE = process.env.SITE_ORIGIN || 'https://whosthat-app.vercel.app'
+const SITE = process.env.SITE_ORIGIN || 'https://whosthatcast.com'
 
 // Keep in sync with src/slugify.js (api functions can't import from src/).
 function slugify(text) {
@@ -38,6 +38,19 @@ function readIndexHtml() {
   throw new Error('dist/index.html not found')
 }
 
+function breadcrumbLd(items) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: items.map(([label, url], i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: label,
+      ...(url ? { item: url } : {}),
+    })),
+  }
+}
+
 // Normalizes movie credits and tv aggregate_credits to { character, name }.
 function extractCast(details, isTV) {
   const raw = (isTV ? details.aggregate_credits : details.credits)?.cast || []
@@ -56,6 +69,12 @@ export default async function handler(req, res) {
   } catch {
     return res.status(500).send('index.html missing from deployment')
   }
+  // dist/index.html carries homepage-only SEO content injected at build time
+  // (scripts/inject-home-seo.mjs); strip it before using it as the template
+  // for content pages, restoring the bare <div id="root"></div>.
+  html = html
+    .replace(/\s*<!--HOME-HEAD-START-->[\s\S]*?<!--HOME-HEAD-END-->/, '')
+    .replace(/<!--HOME-BODY-START-->[\s\S]*?<!--HOME-BODY-END-->/, '')
 
   const serveFallback = () => {
     res.setHeader('content-type', 'text/html; charset=utf-8')
@@ -145,6 +164,11 @@ export default async function handler(req, res) {
         partOfSeries: { '@type': 'TVSeries', name, url: SITE + showUrl },
         actor: seasonCast.map((c) => ({ '@type': 'Person', name: c.name })),
       },
+      breadcrumbLd([
+        ["Who's That?", `${SITE}/`],
+        [name, SITE + showUrl],
+        [`Season ${n}`],
+      ]),
     ]
 
     const otherSeasons = Array.from(
@@ -219,6 +243,11 @@ export default async function handler(req, res) {
           },
         },
       },
+      breadcrumbLd([
+        ["Who's That?", `${SITE}/`],
+        [name, SITE + titleUrl],
+        [`Who plays ${character}?`],
+      ]),
     ]
 
     crawlerBlock = `<h1>Who plays ${escapeHtml(character)} in ${escapeHtml(name)}?</h1>
@@ -244,6 +273,10 @@ export default async function handler(req, res) {
         ...(details.first_air_date ? { startDate: details.first_air_date } : {}),
         actor: cast.map((c) => ({ '@type': 'Person', name: c.name })),
       },
+      breadcrumbLd([
+        ["Who's That?", `${SITE}/`],
+        [`${name}${year ? ` (${year})` : ''} cast & characters`],
+      ]),
     ]
 
     const seasonLinks = isTV
