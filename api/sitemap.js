@@ -10,7 +10,7 @@ const SITE = process.env.SITE_ORIGIN || 'https://whosthatcast.com'
 // tail, it never removes or reshuffles what Google has already seen.
 const RAMP_START_UTC = Date.UTC(2026, 6, 20) // 2026-07-20
 const RAMP_BASE = 1000
-const RAMP_PER_DAY = 60
+const RAMP_PER_DAY = 20 // 1000 -> 5000 over ~200 days
 const RAMP_MAX = 5000
 
 function currentCap() {
