@@ -121,7 +121,10 @@ export default async function handler(req, res) {
     pageTitle = `Who Plays ${character} in ${name}${year ? ` (${year})` : ''}? — ${actor} | Who's That?`
     description = `${character} in ${name} is played by ${actor}. See their photo, age, and where else you've seen them — spoiler-free.`
     ogType = 'article'
-    ogImage = profile || poster
+    ogImage =
+      profile || poster
+        ? `${SITE}/api/og?type=${type}&id=${details.id}&personId=${credit.id}`
+        : null
     const titleUrl = `/${type}/${details.id}/${slugify(name)}`
     const answer = `${character} in ${name}${year ? ` (${year})` : ''} is played by ${actor}.`
 
@@ -166,7 +169,7 @@ export default async function handler(req, res) {
     // Deliberately not TMDB's overview: it can contain plot spoilers.
     description = `Who plays who in ${name}${year ? ` (${year})` : ''}? Browse a spoiler-free character guide with photos of every major character and the actors behind them${cast[0] ? `, including ${cast.slice(0, 3).map((c) => c.name).join(', ')}` : ''}.`
     ogType = isTV ? 'video.tv_show' : 'video.movie'
-    ogImage = poster
+    ogImage = poster ? `${SITE}/api/og?type=${type}&id=${details.id}` : null
 
     jsonLdList = [
       {
@@ -197,6 +200,8 @@ export default async function handler(req, res) {
     `<meta property="og:description" content="${escapeHtml(description)}" />`,
     `<meta property="og:url" content="${escapeHtml(canonical)}" />`,
     ogImage ? `<meta property="og:image" content="${escapeHtml(ogImage)}" />` : '',
+    ogImage ? `<meta property="og:image:width" content="1200" />` : '',
+    ogImage ? `<meta property="og:image:height" content="630" />` : '',
     `<meta name="twitter:card" content="${ogImage ? 'summary_large_image' : 'summary'}" />`,
     `<meta name="twitter:title" content="${escapeHtml(pageTitle)}" />`,
     `<meta name="twitter:description" content="${escapeHtml(description)}" />`,

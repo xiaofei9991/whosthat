@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { VitePWA } from 'vite-plugin-pwa'
 
 const TMDB_BASE = 'https://api.themoviedb.org/3'
 const ALLOWED_PATH = /^\/(search|movie|tv|person|trending)\//
@@ -46,6 +47,58 @@ function tmdbDevProxy(apiKey) {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
-    plugins: [react(), tailwindcss(), tmdbDevProxy(env.TMDB_API_KEY)],
+    plugins: [
+      react(),
+      tailwindcss(),
+      tmdbDevProxy(env.TMDB_API_KEY),
+      VitePWA({
+        registerType: 'autoUpdate',
+        injectRegister: 'inline',
+        manifest: {
+          name: "Who's That? — Spoiler-Free Character Guide",
+          short_name: "Who's That?",
+          description:
+            'Spoiler-free cast & character guides for movies and TV shows.',
+          start_url: '/',
+          display: 'standalone',
+          background_color: '#09090b',
+          theme_color: '#09090b',
+          icons: [
+            { src: '/pwa-192.png', sizes: '192x192', type: 'image/png' },
+            { src: '/pwa-512.png', sizes: '512x512', type: 'image/png' },
+            {
+              src: '/pwa-maskable-512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable',
+            },
+          ],
+        },
+        workbox: {
+          // App shell for offline; never intercept server-rendered SEO routes'
+          // data or the sitemap. TMDB API responses are cached at runtime.
+          navigateFallback: '/index.html',
+          navigateFallbackDenylist: [/^\/api\//, /^\/sitemap\.xml$/, /^\/robots\.txt$/],
+          runtimeCaching: [
+            {
+              urlPattern: /^\/api\/tmdb/,
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'tmdb-api',
+                expiration: { maxEntries: 200, maxAgeSeconds: 86400 },
+              },
+            },
+            {
+              urlPattern: /^https:\/\/image\.tmdb\.org\//,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'tmdb-images',
+                expiration: { maxEntries: 500, maxAgeSeconds: 604800 },
+              },
+            },
+          ],
+        },
+      }),
+    ],
   }
 })

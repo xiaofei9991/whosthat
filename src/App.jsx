@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { tmdb, img } from './api.js'
 import { slugify } from './slugify.js'
+import {
+  getShowProgress,
+  saveShowProgress,
+  removeShowProgress,
+  listProgress,
+  formatProgress,
+} from './progress.js'
 
 const DEFAULT_TITLE = "Who's That? — Spoiler-Free Character Guide for Movies & TV"
 
@@ -170,6 +177,7 @@ function Home({ onPick }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState(null)
   const [trending, setTrending] = useState([])
+  const [myShows, setMyShows] = useState(() => listProgress())
   const [error, setError] = useState(null)
   const timer = useRef()
 
@@ -255,6 +263,50 @@ function Home({ onPick }) {
         {error && <SetupNotice message={error} />}
       </section>
 
+      {myShows.length > 0 && (
+        <section className="pb-12">
+          <h2 className="mb-4 text-sm font-semibold uppercase tracking-widest text-zinc-500">
+            Your shows
+          </h2>
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
+            {myShows.map((p) => {
+              const href = `/tv/${p.id}/${slugify(p.name)}`
+              return (
+                <div key={p.id} className="group relative">
+                  <a
+                    href={href}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      onPick({ media_type: 'tv', id: p.id, name: p.name })
+                    }}
+                    className="block text-left"
+                  >
+                    <Poster
+                      path={p.poster_path}
+                      size="w342"
+                      className="aspect-2/3 w-full rounded-xl transition group-hover:scale-[1.03] group-hover:ring-2 group-hover:ring-amber-400"
+                    />
+                    <span className="mt-1.5 block truncate text-sm text-zinc-300">{p.name}</span>
+                    <span className="block text-xs text-amber-400/90">{formatProgress(p)}</span>
+                  </a>
+                  <button
+                    onClick={() => {
+                      removeShowProgress(p.id)
+                      setMyShows(listProgress())
+                    }}
+                    aria-label={`Remove ${p.name} from your shows`}
+                    title="Remove"
+                    className="absolute right-1.5 top-1.5 hidden size-6 place-items-center rounded-full bg-zinc-950/80 text-xs text-zinc-300 backdrop-blur hover:bg-zinc-950 hover:text-amber-400 group-hover:grid"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
       {trending.length > 0 && (
         <section className="pb-16">
           <h2 className="mb-4 text-sm font-semibold uppercase tracking-widest text-zinc-500">
@@ -317,17 +369,35 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
   const [details, setDetails] = useState(null)
   const [cast, setCast] = useState(null)
   const [upToSeason, setUpToSeason] = useState('all')
+  const [upToEpisode, setUpToEpisode] = useState('all')
   const [error, setError] = useState(null)
 
   useEffect(() => {
     setDetails(null)
     setCast(null)
-    setUpToSeason('all')
+    // Restore the spoiler shield where this viewer left off last time.
+    const saved = isTV ? getShowProgress(id) : null
+    setUpToSeason(saved ? String(saved.season) : 'all')
+    setUpToEpisode(saved && saved.episode ? String(saved.episode) : 'all')
     const path = isTV ? `/tv/${id}` : `/movie/${id}`
     tmdb(path, { append_to_response: isTV ? 'aggregate_credits' : 'credits' })
       .then(setDetails)
       .catch((e) => setError(e.message))
   }, [id, isTV])
+
+  const rememberProgress = (season, episode) => {
+    if (!isTV || !details) return
+    if (season === 'all') {
+      removeShowProgress(id)
+      return
+    }
+    saveShowProgress(id, {
+      season: Number(season),
+      episode: episode === 'all' ? 'all' : Number(episode),
+      name: details.name,
+      poster_path: details.poster_path,
+    })
+  }
 
   useEffect(() => {
     if (!details) return
@@ -349,15 +419,30 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
       setCast(normalizeTvCast(details.aggregate_credits.cast).slice(0, 30))
       return
     }
-    // Spoiler-safe mode: only people who appear in seasons the viewer has seen.
+    // Spoiler-safe mode: only people who appear up to the watched point.
     const n = Number(upToSeason)
+    const ep = upToEpisode === 'all' ? null : Number(upToEpisode)
+    // Full seasons: everything before season n, plus season n itself when no
+    // episode cutoff is set.
+    const fullSeasons = ep == null ? n : n - 1
     setCast(null)
-    Promise.all(
-      Array.from({ length: n }, (_, i) =>
-        tmdb(`/tv/${id}/season/${i + 1}/aggregate_credits`).catch(() => ({ cast: [] })),
-      ),
+    let cancelled = false
+
+    const seasonReqs = Array.from({ length: fullSeasons }, (_, i) =>
+      tmdb(`/tv/${id}/season/${i + 1}/aggregate_credits`).catch(() => ({ cast: [] })),
     )
-      .then((seasons) => {
+    // Partial season: per-episode credits so a character who first appears in
+    // episode ep+1 is never revealed.
+    const episodeReqs =
+      ep == null
+        ? []
+        : Array.from({ length: ep }, (_, i) =>
+            tmdb(`/tv/${id}/season/${n}/episode/${i + 1}/credits`).catch(() => null),
+          )
+
+    Promise.all([Promise.all(seasonReqs), Promise.all(episodeReqs)])
+      .then(([seasons, episodes]) => {
+        if (cancelled) return
         const merged = new Map()
         for (const s of seasons) {
           for (const c of s.cast) {
@@ -371,10 +456,31 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
             }
           }
         }
+        for (const epCredits of episodes) {
+          if (!epCredits) continue
+          for (const c of [...(epCredits.cast || []), ...(epCredits.guest_stars || [])]) {
+            const role = { character: c.character || '' }
+            const prev = merged.get(c.id)
+            if (prev) {
+              prev.total_episode_count += 1
+              if (role.character && !prev.roles.some((r) => r.character === role.character))
+                prev.roles.push(role)
+            } else {
+              merged.set(c.id, {
+                ...c,
+                roles: role.character ? [role] : [],
+                total_episode_count: 1,
+              })
+            }
+          }
+        }
         setCast(normalizeTvCast([...merged.values()]).slice(0, 30))
       })
       .catch((e) => setError(e.message))
-  }, [details, upToSeason, id, isTV])
+    return () => {
+      cancelled = true
+    }
+  }, [details, upToSeason, upToEpisode, id, isTV])
 
   if (error) return <SetupNotice message={error} />
   if (!details)
@@ -382,6 +488,10 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
 
   const year = (details.release_date || details.first_air_date || '').slice(0, 4)
   const seasonCount = details.number_of_seasons || 0
+  const episodeCount =
+    upToSeason === 'all'
+      ? 0
+      : details.seasons?.find((s) => s.season_number === Number(upToSeason))?.episode_count || 0
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
@@ -401,15 +511,19 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
             spoiler-free character guide
           </p>
 
-          {isTV && seasonCount > 1 && (
-            <label className="mt-4 flex flex-wrap items-center gap-2 text-sm text-zinc-300">
+          {isTV && seasonCount >= 1 && (
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-zinc-300">
               <span className="rounded-md bg-amber-400/15 px-2 py-1 font-medium text-amber-300">
                 Spoiler shield
               </span>
               I&rsquo;ve watched up to
               <select
                 value={upToSeason}
-                onChange={(e) => setUpToSeason(e.target.value)}
+                onChange={(e) => {
+                  setUpToSeason(e.target.value)
+                  setUpToEpisode('all')
+                  rememberProgress(e.target.value, 'all')
+                }}
                 className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5"
               >
                 <option value="all">the whole show</option>
@@ -419,8 +533,28 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
                   </option>
                 ))}
               </select>
-              — only characters from those seasons are shown.
-            </label>
+              {upToSeason !== 'all' && episodeCount > 1 && (
+                <select
+                  value={upToEpisode}
+                  onChange={(e) => {
+                    setUpToEpisode(e.target.value)
+                    rememberProgress(upToSeason, e.target.value)
+                  }}
+                  className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5"
+                >
+                  <option value="all">whole season</option>
+                  {Array.from({ length: episodeCount }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>
+                      episode {i + 1}
+                    </option>
+                  ))}
+                </select>
+              )}
+              — only characters who&rsquo;ve already appeared are shown.
+              {upToSeason !== 'all' && (
+                <span className="text-xs text-zinc-500">(progress saved)</span>
+              )}
+            </div>
           )}
         </div>
       </div>
