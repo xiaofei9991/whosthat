@@ -307,6 +307,7 @@ function Home({ onPick }) {
   const [activeIdx, setActiveIdx] = useState(-1)
   const [trending, setTrending] = useState([])
   const [myShows, setMyShows] = useState(() => listProgress())
+  const [searches, setSearches] = useState([])
   const [error, setError] = useState(null)
   const timer = useRef()
 
@@ -342,6 +343,12 @@ function Home({ onPick }) {
       setResults(null)
       return
     }
+
+    // 记录搜索历史
+    const newSearches = [query.trim(), ...searches.filter(s => s !== query.trim())].slice(0, 5)
+    setSearches(newSearches)
+    localStorage.setItem('wt.searches', JSON.stringify(newSearches))
+
     timer.current = setTimeout(() => {
       tmdb('/search/multi', { query: query.trim() })
         .then((d) =>
@@ -386,6 +393,25 @@ function Home({ onPick }) {
           />
           {results && (
             <ul className="animate-pop-in absolute z-10 mt-2 w-full overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900 text-left shadow-2xl">
+              {searches.length > 0 && (
+                <div className="px-5 py-3 border-b border-zinc-800">
+                  <div className="text-xs text-zinc-500 mb-1">{t('recentSearches')}</div>
+                  <div className="flex flex-wrap gap-2">
+                    {searches.map((s, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setQuery(s)
+                          setResults(null)
+                        }}
+                        className="text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1 rounded-full transition"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {results.length === 0 && (
                 <li className="px-5 py-4 text-zinc-500">{t('search.none')}</li>
               )}
@@ -403,13 +429,29 @@ function Home({ onPick }) {
                     }`}
                   >
                     <Poster path={r.poster_path} className="h-14 w-10 rounded" />
-                    <span className="min-w-0">
+                    <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{r.title || r.name}</span>
                       <span className="text-sm text-zinc-500">
                         {r.media_type === 'tv' ? t('tv') : t('movie')} ·{' '}
                         {(r.release_date || r.first_air_date || '').slice(0, 4) || '—'}
                       </span>
+                      {r.top_cast?.slice(0, 3).map((c, idx) => (
+                        <button
+                          key={idx}
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            const whoPlaysHref = `/who-plays/${r.media_type}/${r.id}/${c.id}/${slugify(`who plays ${c.character} in ${r.title || r.name}`)}`
+                            navigate(whoPlaysHref)
+                          }}
+                          className="ml-1 text-xs text-amber-400/70 hover:text-amber-400 hover:underline transition"
+                          title={c.character}
+                        >
+                          · {c.character}
+                        </button>
+                      ))}
                     </span>
+                    <span className="ml-2 text-xs text-amber-400/50">{t('recentSearches')}</span>
                   </a>
                 </li>
               ))}
@@ -455,6 +497,16 @@ function Home({ onPick }) {
                     className="absolute right-1.5 top-1.5 hidden size-6 place-items-center rounded-full bg-zinc-950/80 text-xs text-zinc-300 backdrop-blur hover:bg-zinc-950 hover:text-amber-400 group-hover:grid"
                   >
                     ✕
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault()
+                      navigate(href)
+                    }}
+                    className="absolute bottom-2 right-2 hidden size-7 place-items-center rounded-full bg-zinc-950/80 text-xs text-amber-400 backdrop-blur hover:bg-amber-400 hover:text-zinc-950 group-hover:grid"
+                    title={t('continue')}
+                  >
+                    ▶
                   </button>
                 </div>
               )
@@ -862,6 +914,9 @@ const STATIC_PAGES_ZH = {
       'Who\u2019s That? 只回答一个问题——\u201c这个人是谁来着？\u201d——而且绝不剧透。搜索任何电影或剧集，就能得到一份干净的角色对照表：每个角色的脸、名字和扮演者，除此之外什么都没有。',
       '这个产品的灵感来自身边的观众（包括脸盲症患者）在群像剧面前的挣扎：追剧途中去搜某个角色简直是雷区——搜索结果、剧情回顾甚至演员表都会毫不留情地剧透死亡、背叛和第三季才登场的角色。所以我们做了\u201c剧透护盾\u201d：告诉我们你看到哪里，我们只显示已出场的角色。',
       '角色与演员数据来自社区共建的电影数据库 TMDB。本产品使用 TMDB API，但未经 TMDB 认可或认证。',
+      '我们希望这个工具能帮助所有人更安心地追剧，特别是那些需要无剧透信息的观众。',
+      'Made with ❤️ & TMDB API（免费 key）。',
+      '有问题？欢迎在我们的 GitHub 仓库提 issue。',
     ],
   },
   faq: {
@@ -889,6 +944,14 @@ const STATIC_PAGES_ZH = {
         '我发现演员数据有错或缺失，能修吗？',
         '数据直接来自社区编辑的 TMDB——你可以在 themoviedb.org 上修正，修改会自动同步到这里。',
       ],
+      [
+        '为什么不剧透？',
+        '为了保护用户体验，我们不展示任何剧情信息或剧情回顾。你看到的只是已出场的角色列表。',
+      ],
+      [
+        '数据更新快吗？',
+        '数据实时从 TMDB 拉取，新上映或新季的角色基本秒出。',
+      ],
     ],
   },
   privacy: {
@@ -901,6 +964,7 @@ const STATIC_PAGES_ZH = {
       '影视数据（含图片）来自 TMDB（themoviedb.org），你的浏览器会直接向 TMDB 的服务器请求图片，适用 TMDB 自己的隐私政策。',
       '本站托管在 Vercel 上，标准服务器日志（IP 地址、User Agent）可能出于安全和运维目的被处理。',
       '有问题？欢迎在我们的 GitHub 仓库提 issue。',
+      '如果你对隐私有任何疑问，请随时通过 GitHub issue 联系我们。',
     ],
   },
 }

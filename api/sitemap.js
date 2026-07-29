@@ -109,6 +109,11 @@ export default async function handler(req, res) {
     item._core = coreKeys.has(key)
     titles.push(item)
   }
+  // Deterministic order for prefix stability (sort by media_type + id)
+  titles.sort((a, b) => {
+    if (a.media_type !== b.media_type) return a.media_type === 'movie' ? -1 : 1
+    return a.id - b.id
+  })
 
   const titleUrl = (item) => {
     const slug = slugify(item.title || item.name)
@@ -122,22 +127,26 @@ export default async function handler(req, res) {
   const whoPlaysTitleLimit = Math.min(titles.length, WHO_PLAYS_TITLE_BASE + beyondBase)
   const candidates = titles.slice(0, whoPlaysTitleLimit)
 
-  const castLists = await mapInChunks(candidates, 15, (item) => {
+  const castLists = []
+  for (const item of candidates) {
     const isTV = item.media_type === 'tv'
     const url = isTV
       ? new URL(`${TMDB_BASE}/tv/${item.id}`)
       : new URL(`${TMDB_BASE}/movie/${item.id}/credits`)
     if (isTV) url.searchParams.set('append_to_response', 'aggregate_credits')
     url.searchParams.set('api_key', apiKey)
-    return fetch(url)
-      .then((r) => (r.ok ? r.json() : {}))
-      .then((d) => ({
-        item,
-        cast: ((isTV ? d.aggregate_credits?.cast : d.cast) || []).slice(0, WHO_PLAYS_CAST_LIMIT),
-        seasons: isTV ? d.number_of_seasons || 0 : 0,
-      }))
-      .catch(() => ({ item, cast: [], seasons: 0 }))
-  })
+    const res = await fetch(url)
+    const d = res.ok ? await res.json() : {}
+    let cast = (isTV ? d.aggregate_credits?.cast : d.cast) || []
+    cast = cast.slice(0, WHO_PLAYS_CAST_LIMIT)
+    // Sort cast by id for stable order
+    cast.sort((a, b) => a.id - b.id)
+    castLists.push({
+      item,
+      cast,
+      seasons: isTV ? d.number_of_seasons || 0 : 0,
+    })
+  }
 
   const seasonUrls = (entry) => {
     const slug = slugify(entry.item.title || entry.item.name)
@@ -158,7 +167,8 @@ export default async function handler(req, res) {
       const slug = slugify(`who plays ${character} in ${titleName}`)
       out.push(`${SITE}/who-plays/${entry.item.media_type}/${entry.item.id}/${c.id}${slug ? `/${slug}` : ''}`)
     }
-    return out
+    // Sort who-plays URLs for stable order
+    return out.sort()
   }
 
   // Stable, additive ordering: the head reproduces the pre-ramp sitemap, and

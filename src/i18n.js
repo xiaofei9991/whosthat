@@ -109,6 +109,7 @@ const STRINGS = {
     'title.title': "{name}{y} Cast & Character Guide — No Spoilers | Who's That?",
     'title.season': "{name} Season {n} Characters & Cast — No Spoilers | Who's That?",
     'title.wp': "Who Plays {c} in {t}? — {p} | Who's That?",
+    'recentSearches': 'Recent searches',
   },
   zh: {
     tagline: '影视无剧透角色速查',
@@ -127,7 +128,7 @@ const STRINGS = {
     remove: '移除',
     'blurb.h2': '任何影视剧的无剧透角色演员对照表',
     'blurb.p1':
-      '看剧时是否常常暂停下来问\u201c这人是谁来着\u201d？直接去搜索简直是踩雷：搜索结果、IMDb 演员表和维基页面会毫不留情地剧透角色的死亡、背叛和后期登场。Who\u2019s That? 只告诉你每个角色的脸、名字和扮演者——除此之外什么都没有。',
+      '看剧时是否常常暂停下来问\u201c这人是谁来着\u201d？直接去搜索简直是踩雷：搜索结果、IMDb 演员表和维基页面会毫不留情地剧透角色的死亡、背叛和后期登场。Who\u2019s That? 只告诉你每个角色的脸、名字和扮演者——除之外什么都没有。',
     'blurb.p2':
       '在追剧？用\u201c剧透护盾\u201d告诉我们你看到第几季，我们只显示已出场的角色——第三季才登场的角色绝不会提前暴露。点任何演员还能看 TA 的其他代表作，同样无剧透。',
     'blurb.p3':
@@ -185,5 +186,6 @@ const STRINGS = {
     'title.title': "{name}{y} 演员角色表 — 无剧透 | Who's That?",
     'title.season': "{name} 第 {n} 季角色演员表 — 无剧透 | Who's That?",
     'title.wp': "《{t}》{c} 的扮演者是谁？— {p} | Who's That?",
+    'recentSearches': '最近搜索',
   },
 }
