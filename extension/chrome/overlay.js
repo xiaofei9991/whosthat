@@ -77,27 +77,31 @@ class Overlay {
   async updateOverlay() {
     if (!this.currentTitle) return;
 
-    const response = await fetch(`/who-plays/${this.currentTitle.media_type || 'movie'}/${this.currentTitle.id}/${Math.floor(this.currentTime / 60)}`);
-    const data = await response.json();
+    try {
+      const response = await fetch(`/who-plays/${this.currentTitle.media_type || 'movie'}/${this.currentTitle.id}/${Math.floor(this.currentTime / 60)}`);
+      const data = await response.json();
 
-    if (data.characters && data.characters.length > 0) {
-      this.overlay.innerHTML = `
-        <h3 style="color: #f59e0b; margin: 0 0 12px 0;">Who's That?</h3>
-        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-          ${data.characters.slice(0, 8).map(c => `
-            <div style="text-align: center;">
-              <img src="${c.poster_path ? 'https://image.tmdb.org/t/p/w92' + c.poster_path : ''}" 
-                   style="width: 60px; height: 90px; object-fit: cover; border-radius: 6px; border: 1px solid #374151;">
-              <div style="font-size: 12px; margin-top: 4px;">${c.character}</div>
-            </div>
-          `).join('')}
-        </div>
-        <div style="margin-top: 12px; font-size: 11px; opacity: 0.7;">
-          Up to ${Math.floor(this.currentTime / 60)} min • ${this.currentTitle.name}
-        </div>
-      `;
-      this.overlay.style.display = 'block';
-    } else {
+      if (data.characters && data.characters.length > 0) {
+        this.overlay.innerHTML = `
+          <h3 style="color: #f59e0b; margin: 0 0 12px 0; font-size: 18px;">Who's That?</h3>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            ${data.characters.slice(0, 10).map(c => `
+              <div style="text-align: center; min-width: 70px;">
+                <img src="${c.poster_path ? 'https://image.tmdb.org/t/p/w92' + c.poster_path : 'https://via.placeholder.com/70x100?text=No+Image'}" 
+                     style="width: 70px; height: 100px; object-fit: cover; border-radius: 8px; border: 2px solid #f59e0b; box-shadow: 0 0 10px rgba(245, 158, 11, 0.3);">
+                <div style="font-size: 12px; margin-top: 6px; font-weight: 600; line-height: 1.2;">${c.character}</div>
+              </div>
+            `).join('')}
+          </div>
+          <div style="margin-top: 12px; font-size: 12px; opacity: 0.8;">
+            Up to ${Math.floor(this.currentTime / 60)} min • ${this.currentTitle.name || 'Unknown'}
+          </div>
+        `;
+        this.overlay.style.display = 'block';
+      } else {
+        this.overlay.style.display = 'none';
+      }
+    } catch (e) {
       this.overlay.style.display = 'none';
     }
   }
