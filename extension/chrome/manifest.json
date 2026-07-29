@@ -6,7 +6,8 @@
   "permissions": ["storage", "tabs"],
   "host_permissions": ["*://*.netflix.com/*", "*://*.disneyplus.com/*", "*://*.hbo.com/*"],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "content_scripts": [{
     "matches": ["*://*.netflix.com/*", "*://*.disneyplus.com/*"],

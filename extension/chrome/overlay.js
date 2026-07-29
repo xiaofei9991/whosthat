@@ -10,8 +10,6 @@ class Overlay {
     this.player = null;
     this.currentTitle = null;
     this.currentTime = 0;
-    this.currentEpisode = null;
-    this.currentSeason = null;
     this.overlay = null;
 
     this.init();
@@ -19,9 +17,22 @@ class Overlay {
 
   init() {
     this.findPlayer();
+    this.detectPlayerInfo();
     this.observePlayer();
     this.createOverlay();
     this.startMonitoring();
+    this.initMessageListener();
+  }
+
+  initMessageListener() {
+    if (typeof chrome === 'undefined' || !chrome.runtime) return;
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (request.action === 'toggleOverlay') {
+        this.toggleOverlay();
+      } else if (request.action === 'showOverlay') {
+        this.showOverlay();
+      }
+    });
   }
 
   findPlayer() {
@@ -37,14 +48,80 @@ class Overlay {
     }
   }
 
+  detectPlayerInfo() {
+    if (!this.player) return;
+
+    let titleText = '';
+    let mediaType = 'movie';
+    let titleId = 0;
+    let season = null;
+    let episode = null;
+
+    if (this.isNetflix) {
+      // Netflix title selector
+      const titleEl = document.querySelector('[data-uia="player-metadata-title"]') || 
+                      document.querySelector('.player-metadata-title') ||
+                      document.querySelector('h1') ||
+                      document.querySelector('[aria-label*="title"]');
+      if (titleEl) titleText = titleEl.textContent.trim();
+    } else if (this.isDisney) {
+      // Disney+ title selector
+      const titleEl = document.querySelector('h1') || 
+                      document.querySelector('.title') ||
+                      document.querySelector('[data-testid="title"]');
+      if (titleEl) titleText = titleEl.textContent.trim();
+    } else if (this.isHBO) {
+      const titleEl = document.querySelector('h1') || 
+                      document.querySelector('[class*="title"]') ||
+                      document.title.split(' - ')[0];
+      if (titleEl) titleText = titleEl.textContent.trim();
+    }
+
+    // Parse season/episode from URL (Netflix, Disney+ use ?season= ?episode= )
+    const url = new URL(window.location.href);
+    const seasonMatch = url.searchParams.get('season');
+    if (seasonMatch) season = parseInt(seasonMatch, 10);
+    const episodeMatch = url.searchParams.get('episode');
+    if (episodeMatch) episode = parseInt(episodeMatch, 10);
+
+    // Parse ID from URL (Netflix /watch/ID etc.)
+    const path = url.pathname;
+    const idMatch = path.match(/\/(watch|title)\/(\d+)/);
+    if (idMatch) {
+      titleId = parseInt(idMatch[2], 10);
+      mediaType = path.includes('tv') || path.includes('series') ? 'tv' : 'movie';
+    }
+
+    this.currentTime = this.player.currentTime || 0;
+
+    if (titleText) {
+      this.currentTitle = { 
+        name: titleText, 
+        media_type: mediaType, 
+        id: titleId,
+        season,
+        episode
+      };
+    }
+  }
+
   observePlayer() {
     if (!this.player) return;
 
-    // Observe for time updates
-    if (this.player.addEventListener) {
-      this.player.addEventListener('timeupdate', () => this.updateTime());
-      this.player.addEventListener('play', () => this.updateTime());
-    }
+    // Proper player observation: call detect on events and DOM changes
+    const observer = new MutationObserver(() => {
+      this.detectPlayerInfo();
+    });
+    observer.observe(this.player, { 
+      attributes: true, 
+      childList: true, 
+      subtree: true,
+      characterData: true 
+    });
+
+    this.player.addEventListener('timeupdate', () => this.detectPlayerInfo());
+    this.player.addEventListener('play', () => this.detectPlayerInfo());
+    this.player.addEventListener('pause', () => this.detectPlayerInfo());
   }
 
   createOverlay() {
@@ -67,21 +144,43 @@ class Overlay {
     document.body.appendChild(this.overlay);
   }
 
+  toggleOverlay() {
+    const isHidden = this.overlay.style.display === 'none';
+    if (isHidden) {
+      this.showOverlay();
+    } else {
+      this.hideOverlay();
+    }
+  }
+
+  showOverlay() {
+    if (!this.overlay) return;
+    this.overlay.style.display = 'block';
+    this.updateOverlay();
+  }
+
+  hideOverlay() {
+    if (!this.overlay) return;
+    this.overlay.style.display = 'none';
+  }
+
   updateTime() {
     if (!this.player) return;
 
     this.currentTime = this.player.currentTime || 0;
-    this.updateOverlay();
+    this.detectPlayerInfo();
   }
 
   async updateOverlay() {
-    if (!this.currentTitle) return;
+    if (!this.currentTitle || !this.currentTitle.id) return;
 
     try {
-      const response = await fetch(`/who-plays/${this.currentTitle.media_type || 'movie'}/${this.currentTitle.id}/${Math.floor(this.currentTime / 60)}`);
+      const SITE_ORIGIN = 'https://whosthatcast.com';
+      const response = await fetch(`${SITE_ORIGIN}/who-plays/${this.currentTitle.media_type || 'movie'}/${this.currentTitle.id}/${Math.floor(this.currentTime / 60)}`);
       const data = await response.json();
 
       if (data.characters && data.characters.length > 0) {
+        const progressText = this.currentTitle.season ? `S${this.currentTitle.season}${this.currentTitle.episode ? `E${this.currentTitle.episode}` : ''}` : '';
         this.overlay.innerHTML = `
           <h3 style="color: #f59e0b; margin: 0 0 12px 0; font-size: 18px;">Who's That?</h3>
           <div style="display: flex; flex-wrap: wrap; gap: 8px;">
@@ -94,7 +193,7 @@ class Overlay {
             `).join('')}
           </div>
           <div style="margin-top: 12px; font-size: 12px; opacity: 0.8;">
-            Up to ${Math.floor(this.currentTime / 60)} min • ${this.currentTitle.name || 'Unknown'}
+            Up to ${Math.floor(this.currentTime / 60)} min • ${this.currentTitle.name || 'Unknown'} ${progressText}
           </div>
         `;
         this.overlay.style.display = 'block';
