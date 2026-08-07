@@ -50,6 +50,7 @@
 - **首页 SEO 注入**：构建后置步骤 `scripts/inject-home-seo.mjs` 往 dist/index.html 写入 canonical/OG/WebSite JSON-LD + 本周热门 18 条爬虫可见内链（HOME-HEAD/HOME-BODY 注释标记包裹）；api/page.js 用 index.html 做模板前会剥掉这些标记块。**坑**：本地网络偶发连不上 TMDB 时注入 0 条链接（构建不失败），Vercel 构建机上正常
 - **面包屑**：剧集/分季/who-plays 页由 api/page.js 注入 BreadcrumbList JSON-LD
 - **sitemap 自动放量**：`api/sitemap.js` 按天数线性增长（RAMP\_BASE 1000 起步，每天 +20，封顶 5000 约需 200 天，起点 2026-07-20），无需人工干预。**约束**：URL 顺序必须保持「只往尾部追加」（核心标题页 → 头部 60 个剧目的季/who-plays 页 → 尾部核心剧目扩展 → 长尾标题页 → 长尾扩展），改动后跑 `node scripts/test-sitemap.mjs` 验证 `prefix stable: true`。函数 maxDuration 已在 vercel.json 提到 60s（全量时要拉 400+ 个 credits）
+- **sitemap 热门车道**：`/sitemap-hot.xml`（`api/sitemap-hot.js`）单独收录首播窗口片单（TMDB now_playing / upcoming / airing_today / 近 45 天首播的 on_the_air），每部含标题页 + 最新季 + who-plays；与主 sitemap 分离以免破坏前缀稳定。CDN `s-maxage=3600`；`api/cron-hot` 每天 08:00 UTC 预热。上线后需在 GSC 额外提交 `sitemap-hot.xml`。冒烟：`node scripts/test-sitemap-hot.mjs`
 - **i18n（中英）**：`src/i18n.js` 的 `t(key, vars)` + localStorage `wt.lang`（浏览器语言自动检测）。所有新增 UI 文案必须进字典（en+zh 双份），不要写死字符串；切换语言是整页 reload（让 TMDB 按新 `language` 参数重取）。静态页中文版在 `STATIC_PAGES_ZH`。SEO 注入（api/page.js）仍是纯英文，与客户端 i18n 无关
 - **分享/安装**：`ShareButton`（navigator.share，降级复制链接）用在剧集/季/who-plays 页；`InstallButton` 靠 beforeinstallprompt，仅在浏览器认为可安装时出现
 

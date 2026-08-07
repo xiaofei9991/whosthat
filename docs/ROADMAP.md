@@ -81,7 +81,7 @@ V1 唯一目标：**让 Google 能收录、让种子用户能用**。不加任�
 
 - **不要一次性生成全库**。Google 对新站海量薄页会降权。第一批只做 TMDB trending/popular 前 500 部，页面内容做厚（角色列表 + 集数 + 无剧透简介 + 内链），确认收录质量后再扩量。
 - **内链结构**：cast 页 ↔ 角色问题页 ↔ 每季页互链，sitemap 按类型分文件提交。
-- **新片自动蹭热点**：定时任务（Vercel cron，免费）拉 TMDB upcoming/on-the-air，新片上线当天自动生成页面并更新 sitemap。大剧首播周是 "who plays..." 搜索量峰值，媒体手工文章要 1–3 天，我们是零延迟。
+- **新片自动蹭热点**：✅ `/sitemap-hot.xml`（Vercel cron 每日预热）拉 TMDB now_playing / upcoming / airing_today / 新剧 on_the_air，首播窗口 URL 与主 sitemap 分文件提交，不破坏前缀稳定。
 - **技术前提**：确保页面 SSR/SSG 或至少 prerender——纯 CSR 的 Vite SPA 收录效果差，这是 V1 SEO 基建必须解决的问题（可用 vite-ssg / prerender，或迁 Next.js——只在确有必要时迁）。
 
 ### 首发与种子社区

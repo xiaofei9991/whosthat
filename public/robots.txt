@@ -2,3 +2,4 @@ User-agent: *
 Allow: /
 
 Sitemap: https://whosthatcast.com/sitemap.xml
+Sitemap: https://whosthatcast.com/sitemap-hot.xml

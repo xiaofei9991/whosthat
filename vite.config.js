@@ -84,7 +84,7 @@ export default defineConfig(({ mode }) => {
           // App shell for offline; never intercept server-rendered SEO routes'
           // data or the sitemap. TMDB API responses are cached at runtime.
           navigateFallback: '/index.html',
-          navigateFallbackDenylist: [/^\/api\//, /^\/sitemap\.xml$/, /^\/robots\.txt$/],
+          navigateFallbackDenylist: [/^\/api\//, /^\/sitemap\.xml$/, /^\/sitemap-hot\.xml$/, /^\/robots\.txt$/],
           runtimeCaching: [
             {
               urlPattern: /^\/api\/tmdb/,

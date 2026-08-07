@@ -19,13 +19,23 @@
     { "source": "/movie/:id/:slug*", "destination": "/api/page?type=movie&id=:id" },
     { "source": "/tv/:id/:slug*", "destination": "/api/page?type=tv&id=:id" },
     { "source": "/sitemap.xml", "destination": "/api/sitemap" },
+    { "source": "/sitemap-hot.xml", "destination": "/api/sitemap-hot" },
     { "source": "/:page(about|faq|privacy)", "destination": "/api/page?kind=static&page=:page" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron-hot",
+      "schedule": "0 8 * * *"
+    }
   ],
   "functions": {
     "api/page.js": {
       "includeFiles": "dist/index.html"
     },
     "api/sitemap.js": {
+      "maxDuration": 60
+    },
+    "api/sitemap-hot.js": {
       "maxDuration": 60
     }
   }
