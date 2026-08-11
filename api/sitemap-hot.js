@@ -74,16 +74,23 @@ export default async function handler(req, res) {
   if (!apiKey) return res.status(500).send('TMDB_API_KEY is not configured')
 
   const today = utcDay()
+  const isoDay = (ms) => new Date(ms).toISOString().slice(0, 10)
   const [
     nowPlaying,
     upcoming,
     airingToday,
     onTheAir,
+    recentPremieres,
   ] = await Promise.all([
     fetchPage('/movie/now_playing', apiKey, 1),
     fetchPage('/movie/upcoming', apiKey, 1),
     fetchPage('/tv/airing_today', apiKey, 1),
     fetchPage('/tv/on_the_air', apiKey, 1),
+    fetchPage(
+      `/discover/tv?sort_by=popularity.desc&first_air_date.gte=${isoDay(today - NEW_TV_FIRST_AIR_DAYS * 86400000)}&first_air_date.lte=${isoDay(today)}`,
+      apiKey,
+      1,
+    ),
   ])
 
   const seen = new Set()
@@ -117,6 +124,12 @@ export default async function handler(req, res) {
   for (const item of onTheAir) {
     // Prefer brand-new series so we don't flood with long-running soaps.
     push(item, 'tv', inWindow(item.first_air_date, NEW_TV_FIRST_AIR_DAYS, WINDOW_FUTURE_DAYS, today))
+  }
+  for (const item of recentPremieres) {
+    // Binge drops (whole season at once) vanish from airing_today/on_the_air
+    // the day after premiere; discover-by-first_air_date keeps them in the
+    // hot lane for the full window. Range is enforced by the API params.
+    push(item, 'tv', true)
   }
 
   titles.sort((a, b) => b.popularity - a.popularity || a.id - b.id)

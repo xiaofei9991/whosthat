@@ -120,33 +120,44 @@ export default async function handler(req, res) {
     return `${SITE}/${item.media_type}/${item.id}${slug ? `/${slug}` : ''}`
   }
 
-  // Each candidate title yields ~10 extra URLs (8 who-plays + ~2 seasons), so
-  // only fetch the credits we can actually publish under today's cap.
-  const budget = Math.max(0, cap - (1 + titles.length))
-  const beyondBase = Math.max(0, Math.ceil((budget - WHO_PLAYS_TITLE_BASE * 10) / 10))
+  // Each candidate beyond the head-60 contributes ~WHO_PLAYS_CAST_LIMIT URLs
+  // (candidates are id-sorted, so the first few hundred are movies with no
+  // season pages). Budget with /8 plus a small margin so the emitted list
+  // actually reaches today's cap; extra candidates only append at the tail,
+  // so overshooting is harmless.
+  const fixedCount = 1 + titles.length
+  const headYield = WHO_PLAYS_TITLE_BASE * WHO_PLAYS_CAST_LIMIT
+  const beyondBase = Math.max(
+    0,
+    Math.ceil((cap - fixedCount - headYield) / WHO_PLAYS_CAST_LIMIT) + 2,
+  )
   const whoPlaysTitleLimit = Math.min(titles.length, WHO_PLAYS_TITLE_BASE + beyondBase)
   const candidates = titles.slice(0, whoPlaysTitleLimit)
 
-  const castLists = []
-  for (const item of candidates) {
+  // Chunked parallel fetches: sequential awaits blow past the 60s function
+  // limit once the ramp needs credits for hundreds of titles. mapInChunks
+  // preserves input order, so determinism is unaffected.
+  const castLists = await mapInChunks(candidates, 8, async (item) => {
     const isTV = item.media_type === 'tv'
     const url = isTV
       ? new URL(`${TMDB_BASE}/tv/${item.id}`)
       : new URL(`${TMDB_BASE}/movie/${item.id}/credits`)
     if (isTV) url.searchParams.set('append_to_response', 'aggregate_credits')
     url.searchParams.set('api_key', apiKey)
-    const res = await fetch(url)
-    const d = res.ok ? await res.json() : {}
-    let cast = (isTV ? d.aggregate_credits?.cast : d.cast) || []
-    cast = cast.slice(0, WHO_PLAYS_CAST_LIMIT)
-    // Sort cast by id for stable order
-    cast.sort((a, b) => a.id - b.id)
-    castLists.push({
-      item,
-      cast,
-      seasons: isTV ? d.number_of_seasons || 0 : 0,
-    })
-  }
+    try {
+      const r = await fetch(url)
+      const d = r.ok ? await r.json() : {}
+      let cast = (isTV ? d.aggregate_credits?.cast : d.cast) || []
+      cast = cast.slice(0, WHO_PLAYS_CAST_LIMIT)
+      // Sort cast by id for stable order
+      cast.sort((a, b) => a.id - b.id)
+      return { item, cast, seasons: isTV ? d.number_of_seasons || 0 : 0 }
+    } catch {
+      // A transient credits failure shrinks this title's block for one
+      // response instead of failing the whole sitemap.
+      return { item, cast: [], seasons: 0 }
+    }
+  })
 
   const seasonUrls = (entry) => {
     const slug = slugify(entry.item.title || entry.item.name)
@@ -171,22 +182,24 @@ export default async function handler(req, res) {
     return out.sort()
   }
 
-  // Stable, additive ordering: the head reproduces the pre-ramp sitemap, and
-  // everything the ramp releases later only appends after it. Core-title
-  // groups must come before any extra-title URLs so that a growing candidate
-  // list never shifts the position of URLs Google has already seen.
+  // Stable, additive ordering. The only part of the pre-slice list that grows
+  // with the cap is the per-candidate tail blocks, and they sit at the very
+  // end — so a bigger cap only ever appends, never inserts:
+  //   home → core title pages → long-tail title pages
+  //   → head-60 seasons → head-60 who-plays
+  //   → per-candidate blocks (seasons + who-plays) beyond the head 60
+  // (The previous layout put long-tail title pages *between* two growing
+  // candidate segments; once the ramp released candidates beyond the head 60,
+  // new blocks were inserted mid-list and the prefix broke.)
   const headEntries = castLists.slice(0, WHO_PLAYS_TITLE_BASE)
   const tailEntries = castLists.slice(WHO_PLAYS_TITLE_BASE)
-  const tailCore = tailEntries.filter((e) => e.item._core)
-  const tailExtra = tailEntries.filter((e) => !e.item._core)
   const urls = [
     `${SITE}/`,
     ...titles.filter((t) => t._core).map(titleUrl),
+    ...titles.filter((t) => !t._core).map(titleUrl),
     ...headEntries.flatMap(seasonUrls),
     ...headEntries.flatMap(whoPlaysUrls),
-    ...tailCore.flatMap((e) => [...seasonUrls(e), ...whoPlaysUrls(e)]),
-    ...titles.filter((t) => !t._core).map(titleUrl),
-    ...tailExtra.flatMap((e) => [...seasonUrls(e), ...whoPlaysUrls(e)]),
+    ...tailEntries.flatMap((e) => [...seasonUrls(e), ...whoPlaysUrls(e)]),
   ].slice(0, cap)
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>

@@ -47,7 +47,7 @@ async function run(label, fakeNow) {
 }
 
 const today = await run('today     ')
-const later = await run('+30 days  ', Date.UTC(2026, 7, 19)) // 2026-08-19
+const later = await run('+30 days  ', Date.now() + 30 * 86400000)
 
 const prefixStable = today.every((u, i) => later[i] === u)
 console.log('prefix stable (growth is additive):', prefixStable)
