@@ -56,6 +56,9 @@ const STRINGS = {
       'Watching a TV series? Use the spoiler shield to tell us which season you\u2019re on, and we\u2019ll only show characters who have already appeared — so a surprise season-three arrival never gets revealed early. You can also tap any actor to see where you know them from, spoiler-free.',
     'blurb.p3':
       'Whether you lose track of large ensemble casts, mix up look-alike actors, or live with face blindness (prosopagnosia), this guide keeps every face and name one glance away, for any movie or show on any streaming service.',
+    'blurb.p4':
+      'Who\u2019s That? is a small independent project, and it gets better with every report of a missing face or a confusing moment. Found something wrong, missing, or awkward?',
+    'blurb.p4link': 'Tell us on GitHub \u2192',
     back: '\u2190 Back to search',
     'meta.movie': 'Movie · spoiler-free character guide',
     'meta.tv1': 'TV series · 1 season · spoiler-free character guide',
@@ -100,6 +103,7 @@ const STRINGS = {
     'footer.about': 'About',
     'footer.faq': 'FAQ',
     'footer.privacy': 'Privacy',
+    'footer.feedback': 'Feedback',
     'footer.line':
       'No plot details, ever. Data from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.',
     share: 'Share',
@@ -133,6 +137,9 @@ const STRINGS = {
       '在追剧？用\u201c剧透护盾\u201d告诉我们你看到第几季，我们只显示已出场的角色——第三季才登场的角色绝不会提前暴露。点任何演员还能看 TA 的其他代表作，同样无剧透。',
     'blurb.p3':
       '不管你是记不住群像剧的大量角色、分不清长相相似的演员，还是有脸盲症（prosopagnosia），这份指南让每张脸和名字触手可及，覆盖任何平台的任何影视剧。',
+    'blurb.p4':
+      'Who\u2019s That? 是一个很小的独立项目，每一条\u201c少了张脸\u201d\u201c这里没看懂\u201d的反馈都会让它变好。发现哪里不对、缺失或者别扭？',
+    'blurb.p4link': '来 GitHub 告诉我们 \u2192',
     back: '\u2190 返回搜索',
     'meta.movie': '电影 · 无剧透角色指南',
     'meta.tv1': '剧集 · 共 1 季 · 无剧透角色指南',
@@ -177,6 +184,7 @@ const STRINGS = {
     'footer.about': '关于',
     'footer.faq': '常见问题',
     'footer.privacy': '隐私',
+    'footer.feedback': '反馈',
     'footer.line':
       '永不剧透。数据来自 TMDB。本产品使用 TMDB API，但未经 TMDB 认可或认证。',
     share: '分享',

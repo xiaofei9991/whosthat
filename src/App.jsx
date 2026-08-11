@@ -294,6 +294,14 @@ export default function App() {
               {label}
             </a>
           ))}
+          <a
+            href="https://github.com/xiaofei9991/whosthat/issues"
+            target="_blank"
+            rel="noopener"
+            className="text-zinc-500 hover:text-amber-400"
+          >
+            {t('footer.feedback')}
+          </a>
         </nav>
         {t('footer.line')}
       </footer>
@@ -301,15 +309,48 @@ export default function App() {
   )
 }
 
+const RECENT_KEY = 'wt.recent'
+
+function loadRecent() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(RECENT_KEY))
+    return Array.isArray(saved)
+      ? saved.filter((r) => r && r.id && (r.title || r.name)).slice(0, 5)
+      : []
+  } catch {
+    return []
+  }
+}
+
 function Home({ onPick }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState(null)
   const [activeIdx, setActiveIdx] = useState(-1)
+  const [focused, setFocused] = useState(false)
   const [trending, setTrending] = useState([])
   const [myShows, setMyShows] = useState(() => listProgress())
-  const [searches, setSearches] = useState([])
+  const [recent, setRecent] = useState(loadRecent)
   const [error, setError] = useState(null)
   const timer = useRef()
+
+  // Record a lookup only when the visitor actually picks a title — not on
+  // every keystroke — and store the title itself so it can be reopened
+  // directly from the recent chips.
+  const pick = (item) => {
+    const entry = { media_type: item.media_type, id: item.id, title: item.title, name: item.name }
+    const next = [
+      entry,
+      ...recent.filter((r) => !(r.id === entry.id && r.media_type === entry.media_type)),
+    ].slice(0, 5)
+    setRecent(next)
+    try {
+      localStorage.setItem(RECENT_KEY, JSON.stringify(next))
+      localStorage.removeItem('wt.searches') // legacy per-keystroke history
+    } catch {
+      /* private mode */
+    }
+    onPick(item)
+  }
 
   const onKeyDown = (e) => {
     if (!results || results.length === 0) {
@@ -324,7 +365,7 @@ function Home({ onPick }) {
       setActiveIdx((i) => (i <= 0 ? results.length - 1 : i - 1))
     } else if (e.key === 'Enter' && activeIdx >= 0) {
       e.preventDefault()
-      onPick(results[activeIdx])
+      pick(results[activeIdx])
     } else if (e.key === 'Escape') {
       setResults(null)
     }
@@ -343,12 +384,6 @@ function Home({ onPick }) {
       setResults(null)
       return
     }
-
-    // 记录搜索历史
-    const newSearches = [query.trim(), ...searches.filter(s => s !== query.trim())].slice(0, 5)
-    setSearches(newSearches)
-    localStorage.setItem('wt.searches', JSON.stringify(newSearches))
-
     timer.current = setTimeout(() => {
       tmdb('/search/multi', { query: query.trim() })
         .then((d) =>
@@ -384,44 +419,48 @@ function Home({ onPick }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
-            onBlur={() => setTimeout(() => setResults(null), 150)}
+            onFocus={() => setFocused(true)}
+            onClick={() => setFocused(true)}
+            onBlur={() =>
+              setTimeout(() => {
+                setResults(null)
+                setFocused(false)
+              }, 150)
+            }
             role="combobox"
             aria-expanded={!!results}
             aria-autocomplete="list"
             placeholder={t('search.ph')}
             className="w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-5 py-4 text-lg outline-none transition duration-200 placeholder:text-zinc-500 focus:border-amber-400 focus:ring-4 focus:ring-amber-400/10"
           />
-          {results && (
+          {(results || (focused && !query.trim() && recent.length > 0)) && (
             <ul className="animate-pop-in absolute z-10 mt-2 w-full overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900 text-left shadow-2xl">
-              {searches.length > 0 && (
-                <div className="px-5 py-3 border-b border-zinc-800">
-                  <div className="text-xs text-zinc-500 mb-1">{t('recentSearches')}</div>
-                  <div className="flex flex-wrap gap-2">
-                    {searches.map((s, idx) => (
+              {!results && (
+                <li className="px-5 py-3">
+                  <span className="mb-1.5 block text-xs text-zinc-500">{t('recentSearches')}</span>
+                  <span className="flex flex-wrap gap-2">
+                    {recent.map((r) => (
                       <button
-                        key={idx}
-                        onClick={() => {
-                          setQuery(s)
-                          setResults(null)
-                        }}
-                        className="text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1 rounded-full transition"
+                        key={`${r.media_type}-${r.id}`}
+                        onClick={() => pick(r)}
+                        className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:border-amber-400/50 hover:text-amber-400"
                       >
-                        {s}
+                        {r.title || r.name}
                       </button>
                     ))}
-                  </div>
-                </div>
+                  </span>
+                </li>
               )}
-              {results.length === 0 && (
+              {results && results.length === 0 && (
                 <li className="px-5 py-4 text-zinc-500">{t('search.none')}</li>
               )}
-              {results.map((r, i) => (
+              {results?.map((r, i) => (
                 <li key={`${r.media_type}-${r.id}`}>
                   <a
                     href={titleUrl(r)}
                     onClick={(e) => {
                       e.preventDefault()
-                      onPick(r)
+                      pick(r)
                     }}
                     onMouseEnter={() => setActiveIdx(i)}
                     className={`flex w-full items-center gap-3 px-4 py-2.5 ${
@@ -435,23 +474,7 @@ function Home({ onPick }) {
                         {r.media_type === 'tv' ? t('tv') : t('movie')} ·{' '}
                         {(r.release_date || r.first_air_date || '').slice(0, 4) || '—'}
                       </span>
-                      {r.top_cast?.slice(0, 3).map((c, idx) => (
-                        <button
-                          key={idx}
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            const whoPlaysHref = `/who-plays/${r.media_type}/${r.id}/${c.id}/${slugify(`who plays ${c.character} in ${r.title || r.name}`)}`
-                            navigate(whoPlaysHref)
-                          }}
-                          className="ml-1 text-xs text-amber-400/70 hover:text-amber-400 hover:underline transition"
-                          title={c.character}
-                        >
-                          · {c.character}
-                        </button>
-                      ))}
                     </span>
-                    <span className="ml-2 text-xs text-amber-400/50">{t('recentSearches')}</span>
                   </a>
                 </li>
               ))}
@@ -551,6 +574,17 @@ function Home({ onPick }) {
         <p className="mt-4 text-sm leading-relaxed text-zinc-400">{t('blurb.p1')}</p>
         <p className="mt-3 text-sm leading-relaxed text-zinc-400">{t('blurb.p2')}</p>
         <p className="mt-3 text-sm leading-relaxed text-zinc-400">{t('blurb.p3')}</p>
+        <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+          {t('blurb.p4')}{' '}
+          <a
+            href="https://github.com/xiaofei9991/whosthat/issues"
+            target="_blank"
+            rel="noopener"
+            className="text-amber-400 hover:underline"
+          >
+            {t('blurb.p4link')}
+          </a>
+        </p>
       </section>
     </main>
   )
@@ -914,9 +948,6 @@ const STATIC_PAGES_ZH = {
       'Who\u2019s That? 只回答一个问题——\u201c这个人是谁来着？\u201d——而且绝不剧透。搜索任何电影或剧集，就能得到一份干净的角色对照表：每个角色的脸、名字和扮演者，除此之外什么都没有。',
       '这个产品的灵感来自身边的观众（包括脸盲症患者）在群像剧面前的挣扎：追剧途中去搜某个角色简直是雷区——搜索结果、剧情回顾甚至演员表都会毫不留情地剧透死亡、背叛和第三季才登场的角色。所以我们做了\u201c剧透护盾\u201d：告诉我们你看到哪里，我们只显示已出场的角色。',
       '角色与演员数据来自社区共建的电影数据库 TMDB。本产品使用 TMDB API，但未经 TMDB 认可或认证。',
-      '我们希望这个工具能帮助所有人更安心地追剧，特别是那些需要无剧透信息的观众。',
-      'Made with ❤️ & TMDB API（免费 key）。',
-      '有问题？欢迎在我们的 GitHub 仓库提 issue。',
     ],
   },
   faq: {
@@ -944,14 +975,6 @@ const STATIC_PAGES_ZH = {
         '我发现演员数据有错或缺失，能修吗？',
         '数据直接来自社区编辑的 TMDB——你可以在 themoviedb.org 上修正，修改会自动同步到这里。',
       ],
-      [
-        '为什么不剧透？',
-        '为了保护用户体验，我们不展示任何剧情信息或剧情回顾。你看到的只是已出场的角色列表。',
-      ],
-      [
-        '数据更新快吗？',
-        '数据实时从 TMDB 拉取，新上映或新季的角色基本秒出。',
-      ],
     ],
   },
   privacy: {
@@ -964,7 +987,6 @@ const STATIC_PAGES_ZH = {
       '影视数据（含图片）来自 TMDB（themoviedb.org），你的浏览器会直接向 TMDB 的服务器请求图片，适用 TMDB 自己的隐私政策。',
       '本站托管在 Vercel 上，标准服务器日志（IP 地址、User Agent）可能出于安全和运维目的被处理。',
       '有问题？欢迎在我们的 GitHub 仓库提 issue。',
-      '如果你对隐私有任何疑问，请随时通过 GitHub issue 联系我们。',
     ],
   },
 }
