@@ -121,6 +121,9 @@ const STRINGS = {
     'title.wp': "Who Plays {c} in {t}? — {p} | Who's That?",
     'recentSearches': 'Recent searches',
     continue: 'Continue',
+    'theme.toLight': 'Switch to light mode',
+    'theme.toDark': 'Switch to dark mode',
+    'theme.toSystem': 'Use system appearance',
   },
   zh: {
     tagline: '影视无剧透角色速查',
@@ -203,6 +206,9 @@ const STRINGS = {
     'title.wp': "《{t}》{c} 的扮演者是谁？— {p} | Who's That?",
     'recentSearches': '最近搜索',
     continue: '继续看',
+    'theme.toLight': '切换到浅色模式',
+    'theme.toDark': '切换到深色模式',
+    'theme.toSystem': '跟随系统外观',
   },
 } as const
 

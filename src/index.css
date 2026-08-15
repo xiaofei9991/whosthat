@@ -92,6 +92,11 @@ html.theme-switching *::after {
   .animate-pop-in {
     animation: none;
   }
+  html.theme-switching *,
+  html.theme-switching *::before,
+  html.theme-switching *::after {
+    transition: none !important;
+  }
   html {
     scroll-behavior: auto;
   }

@@ -8,10 +8,16 @@
     <meta name="theme-color" content="#09090b" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script>
-      // Apply saved theme before first paint to avoid a flash of the wrong theme.
+      // Apply theme before first paint to avoid a flash. Keep in sync with src/theme.ts:
+      // localStorage.theme is 'system' | 'light' | 'dark' (missing = follow system).
       try {
-        if (localStorage.getItem('theme') === 'light')
-          document.documentElement.classList.add('light')
+        var t = localStorage.getItem('theme')
+        var light =
+          t === 'light' ||
+          ((t === 'system' || !t) && matchMedia('(prefers-color-scheme: light)').matches)
+        if (light) document.documentElement.classList.add('light')
+        var m = document.querySelector('meta[name="theme-color"]')
+        if (m) m.setAttribute('content', light ? '#fafafa' : '#09090b')
       } catch (e) {}
     </script>
     <title>Who's That? — Spoiler-Free Character Guide for Movies & TV</title>

@@ -27,8 +27,8 @@
 **完整设计契约见 `DESIGN.md`（颜色/字体/间距/组件/动效/禁忌），改 UI 前必读。** 以下是最容易踩的几条：
 
 - 深色优先设计。浅色模式通过 `html.light` 重映射 zinc/amber CSS 变量实现（`src/index.css`），**不要**给组件加 `dark:` 变体
-- 主题切换存 `localStorage.theme`，`index.html` 内联脚本防闪烁
-- 图标用 Reicon 库（github.com/dqev/reicon）的内联 SVG，24×24 viewBox：logo/favicon 用 `face-scan-circle`，主题切换用 `sun`/`moon`
+- 主题切换存 `localStorage.theme`（`system` | `light` | `dark`，缺省=跟随系统 `prefers-color-scheme`），`index.html` 内联脚本防闪烁（逻辑与 `src/theme.ts` 同步）；按钮三态循环 system → light → dark
+- 图标用 Reicon 库（github.com/dqev/reicon）的内联 SVG，24×24 viewBox：logo/favicon 用 `face-scan-circle`，主题切换用 `computer`/`sun`/`moon`
 - 入场动画类 `.animate-fade-up` / `.animate-pop-in`，fill-mode 必须是 `backwards`（`both`/`forwards` 会残留 transform，产生层叠上下文困住 z-index 并覆盖 hover transform——已踩过坑）
 - 动画需支持 `prefers-reduced-motion`（脸盲用户群体对无障碍敏感）
 
