@@ -1,15 +1,31 @@
 import { useEffect, useRef, useState } from 'react'
-import { tmdb, img } from './api.js'
-import { slugify } from './slugify.js'
+import type { KeyboardEvent } from 'react'
+import { tmdb, img } from './api'
+import { slugify } from './slugify'
 import {
   getShowProgress,
   saveShowProgress,
   removeShowProgress,
   listProgress,
-} from './progress.js'
-import { t, getLang, setLang } from './i18n.js'
+} from './progress'
+import { t, getLang, setLang } from './i18n'
+import type {
+  ListedProgress,
+  MediaType,
+  Navigate,
+  RecentSearch,
+  Route,
+  StaticPageId,
+  TmdbCastMember,
+  TmdbDetails,
+  TmdbEpisodeCredits,
+  TmdbListResponse,
+  TmdbPerson,
+  TmdbSeasonCredits,
+  TmdbTitle,
+} from './types'
 
-function progressLabel(p) {
+function progressLabel(p: ListedProgress): string {
   if (p.season === 'all') return t('prog.whole')
   if (p.episode && p.episode !== 'all') return t('prog.se', { s: p.season, e: p.episode })
   return t('prog.season', { n: p.season })
@@ -17,36 +33,47 @@ function progressLabel(p) {
 
 // Parses /movie/:id/:slug, /tv/:id/:slug, /tv/:id/season-:n/:slug,
 // /who-plays/:type/:mediaId/:personId/:slug and static pages; anything else is home.
-function parseRoute(pathname) {
+function parseRoute(pathname: string): Route {
   const w = pathname.match(/^\/who-plays\/(movie|tv)\/(\d+)\/(\d+)(?:\/|$)/)
   if (w)
-    return { type: 'whoplays', mediaType: w[1], mediaId: Number(w[2]), personId: Number(w[3]) }
+    return {
+      type: 'whoplays',
+      mediaType: w[1] as MediaType,
+      mediaId: Number(w[2]),
+      personId: Number(w[3]),
+    }
   const s = pathname.match(/^\/tv\/(\d+)\/season-(\d+)(?:\/|$)/)
   if (s) return { type: 'season', id: Number(s[1]), season: Number(s[2]) }
   const m = pathname.match(/^\/(movie|tv)\/(\d+)(?:\/|$)/)
-  if (m) return { type: 'title', mediaType: m[1], id: Number(m[2]) }
+  if (m) return { type: 'title', mediaType: m[1] as MediaType, id: Number(m[2]) }
   const st = pathname.match(/^\/(about|faq|privacy)\/?$/)
-  if (st) return { type: 'static', page: st[1] }
+  if (st) return { type: 'static', page: st[1] as StaticPageId }
   return { type: 'home' }
 }
 
-function seasonUrl(id, season, name) {
+function seasonUrl(id: number, season: number, name?: string | null): string {
   const slug = slugify(name)
   return `/tv/${id}/season-${season}${slug ? `/${slug}` : ''}`
 }
 
-function titleUrl(item) {
+function titleUrl(item: Pick<TmdbTitle, 'id' | 'media_type' | 'title' | 'name'>): string {
   const type = item.media_type === 'tv' ? 'tv' : 'movie'
   const slug = slugify(item.title || item.name)
   return `/${type}/${item.id}${slug ? `/${slug}` : ''}`
 }
 
-function whoPlaysUrl(mediaType, mediaId, personId, character, titleName) {
+function whoPlaysUrl(
+  mediaType: MediaType,
+  mediaId: number,
+  personId: number,
+  character: string,
+  titleName?: string | null,
+): string {
   const slug = slugify(`who plays ${character} in ${titleName}`)
   return `/who-plays/${mediaType}/${mediaId}/${personId}${slug ? `/${slug}` : ''}`
 }
 
-function setCanonical(url) {
+function setCanonical(url: string): void {
   let link = document.querySelector('link[rel="canonical"]')
   if (!link) {
     link = document.createElement('link')
@@ -71,23 +98,23 @@ function LangToggle() {
 }
 
 function InstallButton() {
-  const [prompt, setPrompt] = useState(null)
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
 
   useEffect(() => {
-    const onPrompt = (e) => {
+    const onPrompt = (e: BeforeInstallPromptEvent) => {
       e.preventDefault()
-      setPrompt(e)
+      setInstallPrompt(e)
     }
     window.addEventListener('beforeinstallprompt', onPrompt)
     return () => window.removeEventListener('beforeinstallprompt', onPrompt)
   }, [])
 
-  if (!prompt) return null
+  if (!installPrompt) return null
   return (
     <button
       onClick={() => {
-        prompt.prompt()
-        prompt.userChoice.finally(() => setPrompt(null))
+        void installPrompt.prompt()
+        void installPrompt.userChoice.finally(() => setInstallPrompt(null))
       }}
       className="hidden rounded-lg border border-zinc-800 px-3 py-2 text-xs font-medium text-zinc-400 transition hover:border-amber-400/50 hover:text-amber-400 sm:block"
     >
@@ -96,7 +123,7 @@ function InstallButton() {
   )
 }
 
-function ShareButton({ title }) {
+function ShareButton({ title }: { title: string }) {
   const [copied, setCopied] = useState(false)
 
   const share = async () => {
@@ -196,7 +223,7 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPopState)
   }, [])
 
-  const navigate = (path) => {
+  const navigate = (path: string) => {
     if (path !== window.location.pathname) window.history.pushState(null, '', path)
     setRoute(parseRoute(path))
     window.scrollTo(0, 0)
@@ -247,7 +274,7 @@ export default function App() {
       </header>
 
       {route.type === 'home' ? (
-        <Home onPick={(item) => navigate(titleUrl(item))} />
+        <Home onPick={(item) => navigate(titleUrl(item))} navigate={navigate} />
       ) : route.type === 'whoplays' ? (
         <WhoPlaysPage
           key={`${route.mediaType}-${route.mediaId}-${route.personId}`}
@@ -277,11 +304,13 @@ export default function App() {
 
       <footer className="mx-auto max-w-5xl border-t border-zinc-800/60 px-4 py-10 text-center text-xs text-zinc-600">
         <nav className="mb-3 flex justify-center gap-5 text-sm">
-          {[
-            ['/about', t('footer.about')],
-            ['/faq', t('footer.faq')],
-            ['/privacy', t('footer.privacy')],
-          ].map(([href, label]) => (
+          {(
+            [
+              ['/about', t('footer.about')],
+              ['/faq', t('footer.faq')],
+              ['/privacy', t('footer.privacy')],
+            ] as const
+          ).map(([href, label]) => (
             <a
               key={href}
               href={href}
@@ -311,32 +340,29 @@ export default function App() {
 
 const RECENT_KEY = 'wt.recent'
 
-function loadRecent() {
+function loadRecent(): RecentSearch[] {
   try {
-    const saved = JSON.parse(localStorage.getItem(RECENT_KEY))
+    const saved: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) || 'null')
     return Array.isArray(saved)
-      ? saved.filter((r) => r && r.id && (r.title || r.name)).slice(0, 5)
+      ? saved.filter((r): r is RecentSearch => Boolean(r && r.id && (r.title || r.name))).slice(0, 5)
       : []
   } catch {
     return []
   }
 }
 
-function Home({ onPick }) {
+function Home({ onPick, navigate }: { onPick: (item: TmdbTitle) => void; navigate: Navigate }) {
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState(null)
+  const [results, setResults] = useState<TmdbTitle[] | null>(null)
   const [activeIdx, setActiveIdx] = useState(-1)
   const [focused, setFocused] = useState(false)
-  const [trending, setTrending] = useState([])
+  const [trending, setTrending] = useState<TmdbTitle[]>([])
   const [myShows, setMyShows] = useState(() => listProgress())
   const [recent, setRecent] = useState(loadRecent)
-  const [error, setError] = useState(null)
-  const timer = useRef()
+  const [error, setError] = useState<string | null>(null)
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
-  // Record a lookup only when the visitor actually picks a title — not on
-  // every keystroke — and store the title itself so it can be reopened
-  // directly from the recent chips.
-  const pick = (item) => {
+  const pick = (item: TmdbTitle) => {
     const entry = { media_type: item.media_type, id: item.id, title: item.title, name: item.name }
     const next = [
       entry,
@@ -352,7 +378,7 @@ function Home({ onPick }) {
     onPick(item)
   }
 
-  const onKeyDown = (e) => {
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (!results || results.length === 0) {
       if (e.key === 'Escape') setResults(null)
       return
@@ -365,16 +391,17 @@ function Home({ onPick }) {
       setActiveIdx((i) => (i <= 0 ? results.length - 1 : i - 1))
     } else if (e.key === 'Enter' && activeIdx >= 0) {
       e.preventDefault()
-      pick(results[activeIdx])
+      const picked = results[activeIdx]
+      if (picked) pick(picked)
     } else if (e.key === 'Escape') {
       setResults(null)
     }
   }
 
   useEffect(() => {
-    tmdb('/trending/all/week')
+    tmdb<TmdbListResponse<TmdbTitle>>('/trending/all/week')
       .then((d) => setTrending(d.results.filter((r) => r.media_type !== 'person').slice(0, 12)))
-      .catch((e) => setError(e.message))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
   }, [])
 
   useEffect(() => {
@@ -385,7 +412,7 @@ function Home({ onPick }) {
       return
     }
     timer.current = setTimeout(() => {
-      tmdb('/search/multi', { query: query.trim() })
+      tmdb<TmdbListResponse<TmdbTitle>>('/search/multi', { query: query.trim() })
         .then((d) =>
           setResults(
             d.results
@@ -393,7 +420,7 @@ function Home({ onPick }) {
               .slice(0, 10),
           ),
         )
-        .catch((e) => setError(e.message))
+        .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
     }, 300)
   }, [query])
 
@@ -590,13 +617,23 @@ function Home({ onPick }) {
   )
 }
 
-function TitlePage({ mediaType, id, onBack, navigate }) {
+function TitlePage({
+  mediaType,
+  id,
+  onBack,
+  navigate,
+}: {
+  mediaType: MediaType
+  id: number
+  onBack: () => void
+  navigate: Navigate
+}) {
   const isTV = mediaType === 'tv'
-  const [details, setDetails] = useState(null)
-  const [cast, setCast] = useState(null)
+  const [details, setDetails] = useState<TmdbDetails | null>(null)
+  const [cast, setCast] = useState<TmdbCastMember[] | null>(null)
   const [upToSeason, setUpToSeason] = useState('all')
   const [upToEpisode, setUpToEpisode] = useState('all')
-  const [error, setError] = useState(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     setDetails(null)
@@ -606,12 +643,12 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
     setUpToSeason(saved ? String(saved.season) : 'all')
     setUpToEpisode(saved && saved.episode ? String(saved.episode) : 'all')
     const path = isTV ? `/tv/${id}` : `/movie/${id}`
-    tmdb(path, { append_to_response: isTV ? 'aggregate_credits' : 'credits' })
+    tmdb<TmdbDetails>(path, { append_to_response: isTV ? 'aggregate_credits' : 'credits' })
       .then(setDetails)
-      .catch((e) => setError(e.message))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
   }, [id, isTV])
 
-  const rememberProgress = (season, episode) => {
+  const rememberProgress = (season: string, episode: string) => {
     if (!isTV || !details) return
     if (season === 'all') {
       removeShowProgress(id)
@@ -620,7 +657,7 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
     saveShowProgress(id, {
       season: Number(season),
       episode: episode === 'all' ? 'all' : Number(episode),
-      name: details.name,
+              name: details.name ?? details.title ?? '',
       poster_path: details.poster_path,
     })
   }
@@ -638,11 +675,11 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
   useEffect(() => {
     if (!details) return
     if (!isTV) {
-      setCast(details.credits.cast.slice(0, 30))
+      setCast(details.credits?.cast.slice(0, 30) ?? [])
       return
     }
     if (upToSeason === 'all') {
-      setCast(normalizeTvCast(details.aggregate_credits.cast).slice(0, 30))
+      setCast(normalizeTvCast(details.aggregate_credits?.cast ?? []).slice(0, 30))
       return
     }
     // Spoiler-safe mode: only people who appear up to the watched point.
@@ -655,30 +692,34 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
     let cancelled = false
 
     const seasonReqs = Array.from({ length: fullSeasons }, (_, i) =>
-      tmdb(`/tv/${id}/season/${i + 1}/aggregate_credits`).catch(() => ({ cast: [] })),
+      tmdb<TmdbSeasonCredits>(`/tv/${id}/season/${i + 1}/aggregate_credits`).catch(
+        (): TmdbSeasonCredits => ({ cast: [] }),
+      ),
     )
-    // Partial season: per-episode credits so a character who first appears in
-    // episode ep+1 is never revealed.
     const episodeReqs =
       ep == null
         ? []
         : Array.from({ length: ep }, (_, i) =>
-            tmdb(`/tv/${id}/season/${n}/episode/${i + 1}/credits`).catch(() => null),
+            tmdb<TmdbEpisodeCredits>(`/tv/${id}/season/${n}/episode/${i + 1}/credits`).catch(
+              (): TmdbEpisodeCredits | null => null,
+            ),
           )
 
     Promise.all([Promise.all(seasonReqs), Promise.all(episodeReqs)])
       .then(([seasons, episodes]) => {
         if (cancelled) return
-        const merged = new Map()
+        const merged = new Map<number, TmdbCastMember>()
         for (const s of seasons) {
-          for (const c of s.cast) {
+          for (const c of s.cast ?? []) {
             const prev = merged.get(c.id)
             if (prev) {
-              prev.total_episode_count += c.total_episode_count
-              for (const role of c.roles)
-                if (!prev.roles.some((r) => r.character === role.character)) prev.roles.push(role)
+              prev.total_episode_count = (prev.total_episode_count ?? 0) + (c.total_episode_count ?? 0)
+              for (const role of c.roles ?? [])
+                if (!prev.roles?.some((r) => r.character === role.character)) {
+                  prev.roles = [...(prev.roles ?? []), role]
+                }
             } else {
-              merged.set(c.id, { ...c, roles: [...c.roles] })
+              merged.set(c.id, { ...c, roles: [...(c.roles ?? [])] })
             }
           }
         }
@@ -688,9 +729,9 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
             const role = { character: c.character || '' }
             const prev = merged.get(c.id)
             if (prev) {
-              prev.total_episode_count += 1
-              if (role.character && !prev.roles.some((r) => r.character === role.character))
-                prev.roles.push(role)
+              prev.total_episode_count = (prev.total_episode_count ?? 0) + 1
+              if (role.character && !prev.roles?.some((r) => r.character === role.character))
+                prev.roles = [...(prev.roles ?? []), role]
             } else {
               merged.set(c.id, {
                 ...c,
@@ -702,7 +743,7 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
         }
         setCast(normalizeTvCast([...merged.values()]).slice(0, 30))
       })
-      .catch((e) => setError(e.message))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
     return () => {
       cancelled = true
     }
@@ -822,7 +863,7 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
               person={c}
               isTV={isTV}
               currentTitleId={details.id}
-              titleName={details.title || details.name}
+              titleName={details.title || details.name || ''}
               navigate={navigate}
               delay={Math.min(i * 40, 600)}
             />
@@ -833,20 +874,31 @@ function TitlePage({ mediaType, id, onBack, navigate }) {
   )
 }
 
-function SeasonPage({ id, season, navigate }) {
-  const [details, setDetails] = useState(null)
-  const [cast, setCast] = useState(null)
-  const [error, setError] = useState(null)
+function SeasonPage({
+  id,
+  season,
+  navigate,
+}: {
+  id: number
+  season: number
+  navigate: Navigate
+}) {
+  const [details, setDetails] = useState<TmdbDetails | null>(null)
+  const [cast, setCast] = useState<TmdbCastMember[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     setDetails(null)
     setCast(null)
-    Promise.all([tmdb(`/tv/${id}`), tmdb(`/tv/${id}/season/${season}/aggregate_credits`)])
+    Promise.all([
+      tmdb<TmdbDetails>(`/tv/${id}`),
+      tmdb<TmdbSeasonCredits>(`/tv/${id}/season/${season}/aggregate_credits`),
+    ])
       .then(([d, credits]) => {
         setDetails(d)
         setCast(normalizeTvCast(credits.cast || []).slice(0, 30))
       })
-      .catch((e) => setError(e.message))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
   }, [id, season])
 
   useEffect(() => {
@@ -892,7 +944,7 @@ function SeasonPage({ id, season, navigate }) {
               <span className="text-zinc-500">{t('seasonsLabel')}</span>
               {Array.from({ length: seasonCount }, (_, i) => {
                 const n = i + 1
-                const href = seasonUrl(id, n, details.name)
+                const href = seasonUrl(id, n, details.name ?? '')
                 return n === season ? (
                   <span
                     key={n}
@@ -929,7 +981,7 @@ function SeasonPage({ id, season, navigate }) {
               person={c}
               isTV
               currentTitleId={id}
-              titleName={details.name}
+              titleName={details.name || ''}
               navigate={navigate}
               delay={Math.min(i * 40, 600)}
             />
@@ -1045,15 +1097,26 @@ const STATIC_PAGES = {
   },
 }
 
-function StaticPage({ page, navigate }) {
-  const content = (getLang() === 'zh' ? STATIC_PAGES_ZH : STATIC_PAGES)[page]
+type StaticContent = {
+  title: string
+  heading: string
+  body?: string[]
+  faqs?: [string, string][]
+}
+
+function StaticPage({ page, navigate }: { page: StaticPageId; navigate: Navigate }) {
+  const pages = (getLang() === 'zh' ? STATIC_PAGES_ZH : STATIC_PAGES) as Record<
+    StaticPageId,
+    StaticContent
+  >
+  const content = pages[page]
 
   useEffect(() => {
     document.title = content.title
     setCanonical(`${window.location.origin}/${page}`)
   }, [content, page])
 
-  // FAQPage JSON-LD is injected server-side by functions/_lib/page.js.
+  // FAQPage JSON-LD is injected server-side by functions/_lib/page.ts.
 
   return (
     <main className="animate-fade-up mx-auto max-w-2xl px-4 py-12">
@@ -1085,28 +1148,46 @@ function StaticPage({ page, navigate }) {
   )
 }
 
-function normalizeTvCast(list) {
+function normalizeTvCast(list: TmdbCastMember[]): TmdbCastMember[] {
   return list
     .map((c) => ({
       ...c,
       character: c.roles?.map((r) => r.character).filter(Boolean).join(' / ') || '—',
       episodes: c.total_episode_count,
     }))
-    .sort((a, b) => b.episodes - a.episodes)
+    .sort((a, b) => (b.episodes ?? 0) - (a.episodes ?? 0))
 }
 
-function CharacterCard({ person, isTV, currentTitleId, titleName, navigate, delay = 0 }) {
+function CharacterCard({
+  person,
+  isTV,
+  currentTitleId,
+  titleName,
+  navigate,
+  delay = 0,
+}: {
+  person: TmdbCastMember
+  isTV: boolean
+  currentTitleId: number
+  titleName: string
+  navigate: Navigate
+  delay?: number
+}) {
   const [open, setOpen] = useState(false)
-  const [knownFor, setKnownFor] = useState(null)
+  const [knownFor, setKnownFor] = useState<TmdbTitle[] | null>(null)
 
   useEffect(() => {
     if (!open || knownFor) return
-    tmdb(`/person/${person.id}/combined_credits`)
+    tmdb<{ cast: TmdbTitle[] }>(`/person/${person.id}/combined_credits`)
       .then((d) => {
-        const seen = new Set()
+        const seen = new Set<number>()
         const top = d.cast
-          .filter((c) => c.id !== currentTitleId && c.poster_path && !seen.has(c.id) && seen.add(c.id))
-          .sort((a, b) => b.vote_count - a.vote_count)
+          .filter((c) => {
+            if (c.id === currentTitleId || !c.poster_path || seen.has(c.id)) return false
+            seen.add(c.id)
+            return true
+          })
+          .sort((a, b) => (b.vote_count ?? 0) - (a.vote_count ?? 0))
           .slice(0, 4)
         setKnownFor(top)
       })
@@ -1122,11 +1203,23 @@ function CharacterCard({ person, isTV, currentTitleId, titleName, navigate, dela
       <div className="p-3">
         <p className="truncate font-semibold" title={person.character}>
           <a
-            href={whoPlaysUrl(isTV ? 'tv' : 'movie', currentTitleId, person.id, person.character, titleName)}
+            href={whoPlaysUrl(
+              isTV ? 'tv' : 'movie',
+              currentTitleId,
+              person.id,
+              person.character ?? '—',
+              titleName,
+            )}
             onClick={(e) => {
               e.preventDefault()
               navigate(
-                whoPlaysUrl(isTV ? 'tv' : 'movie', currentTitleId, person.id, person.character, titleName),
+                whoPlaysUrl(
+                  isTV ? 'tv' : 'movie',
+                  currentTitleId,
+                  person.id,
+                  person.character ?? '—',
+                  titleName,
+                ),
               )
             }}
             className="hover:text-amber-400 hover:underline"
@@ -1169,30 +1262,40 @@ function CharacterCard({ person, isTV, currentTitleId, titleName, navigate, dela
   )
 }
 
-function WhoPlaysPage({ mediaType, mediaId, personId, navigate }) {
+function WhoPlaysPage({
+  mediaType,
+  mediaId,
+  personId,
+  navigate,
+}: {
+  mediaType: MediaType
+  mediaId: number
+  personId: number
+  navigate: Navigate
+}) {
   const isTV = mediaType === 'tv'
-  const [details, setDetails] = useState(null)
-  const [person, setPerson] = useState(null)
-  const [error, setError] = useState(null)
+  const [details, setDetails] = useState<TmdbDetails | null>(null)
+  const [person, setPerson] = useState<TmdbPerson | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     setDetails(null)
     setPerson(null)
     setError(null)
     Promise.all([
-      tmdb(`/${mediaType}/${mediaId}`, {
+      tmdb<TmdbDetails>(`/${mediaType}/${mediaId}`, {
         append_to_response: isTV ? 'aggregate_credits' : 'credits',
       }),
-      tmdb(`/person/${personId}`, { append_to_response: 'combined_credits' }),
+      tmdb<TmdbPerson>(`/person/${personId}`, { append_to_response: 'combined_credits' }),
     ])
       .then(([d, p]) => {
         setDetails(d)
         setPerson(p)
       })
-      .catch((e) => setError(e.message))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
   }, [mediaType, mediaId, personId, isTV])
 
-  const titleName = details ? details.title || details.name : null
+  const titleName = details ? details.title || details.name || '' : ''
   const castList = details ? (isTV ? details.aggregate_credits : details.credits)?.cast || [] : []
   const credit = castList.find((c) => c.id === personId)
   const character = credit
@@ -1237,12 +1340,13 @@ function WhoPlaysPage({ mediaType, mediaId, personId, navigate }) {
 
   const age = person.birthday ? computeAge(person.birthday, person.deathday) : null
 
-  const seen = new Set()
+  const seen = new Set<number>()
   const knownFor = (person.combined_credits?.cast || [])
-    .filter(
-      (c) =>
-        c.id !== details.id && c.poster_path && !seen.has(c.id) && seen.add(c.id),
-    )
+    .filter((c) => {
+      if (c.id === details.id || !c.poster_path || seen.has(c.id)) return false
+      seen.add(c.id)
+      return true
+    })
     .sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0))
     .slice(0, 6)
 
@@ -1380,7 +1484,7 @@ function WhoPlaysPage({ mediaType, mediaId, personId, navigate }) {
   )
 }
 
-function computeAge(birthday, deathday) {
+function computeAge(birthday: string, deathday: string | null | undefined): number | null {
   const birth = new Date(birthday)
   if (Number.isNaN(birth.getTime())) return null
   const end = deathday ? new Date(deathday) : new Date()
@@ -1390,7 +1494,15 @@ function computeAge(birthday, deathday) {
   return age
 }
 
-function Poster({ path, size = 'w185', className = '' }) {
+function Poster({
+  path,
+  size = 'w185',
+  className = '',
+}: {
+  path: string | null | undefined
+  size?: string
+  className?: string
+}) {
   const [loaded, setLoaded] = useState(false)
   const src = img(path, size)
   if (!src)
@@ -1404,7 +1516,7 @@ function Poster({ path, size = 'w185', className = '' }) {
       src={src}
       alt=""
       loading="lazy"
-      ref={(el) => {
+      ref={(el: HTMLImageElement | null) => {
         // Cached images can be complete before onLoad is attached.
         if (el?.complete) setLoaded(true)
       }}
@@ -1414,7 +1526,7 @@ function Poster({ path, size = 'w185', className = '' }) {
   )
 }
 
-function SetupNotice({ message }) {
+function SetupNotice({ message }: { message: string }) {
   return (
     <div className="mx-auto mt-8 max-w-xl rounded-2xl border border-amber-400/30 bg-amber-400/5 p-5 text-left">
       <p className="font-semibold text-amber-300">Almost there — API not connected yet</p>

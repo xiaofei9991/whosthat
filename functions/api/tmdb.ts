@@ -1,7 +1,7 @@
 const TMDB_BASE = 'https://api.themoviedb.org/3'
 const ALLOWED_PATH = /^\/(search|movie|tv|person|trending)\//
 
-export async function onRequest(context) {
+export async function onRequest(context: EventContext<Env, string, Record<string, never>>): Promise<Response> {
   const apiKey = context.env.TMDB_API_KEY
   if (!apiKey) {
     return Response.json({ error: 'TMDB_API_KEY is not configured' }, { status: 500 })

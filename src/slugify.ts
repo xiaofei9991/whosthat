@@ -1,6 +1,4 @@
-// Kebab-case slug for SEO URLs. A copy of this lives in api/ functions
-// (they can't import from src/), keep both in sync.
-export function slugify(text) {
+export function slugify(text: string | null | undefined): string {
   return String(text || '')
     .toLowerCase()
     .normalize('NFKD')

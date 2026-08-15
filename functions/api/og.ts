@@ -4,6 +4,24 @@ import { ImageResponse } from 'workers-og'
 const TMDB_BASE = 'https://api.themoviedb.org/3'
 const e = React.createElement
 
+type OgCastMember = {
+  id: number
+  name: string
+  character?: string
+  profile_path?: string | null
+  roles?: { character?: string }[]
+}
+
+type OgDetails = {
+  title?: string
+  name?: string
+  release_date?: string
+  first_air_date?: string
+  poster_path?: string | null
+  credits?: { cast?: OgCastMember[] }
+  aggregate_credits?: { cast?: OgCastMember[] }
+}
+
 function brandRow() {
   return e(
     'div',
@@ -30,7 +48,19 @@ function brandRow() {
   )
 }
 
-function card({ imageUrl, kicker, title, accent, footer }) {
+function card({
+  imageUrl,
+  kicker,
+  title,
+  accent,
+  footer,
+}: {
+  imageUrl: string | null
+  kicker: string
+  title: string
+  accent?: string | null
+  footer: string
+}) {
   return e(
     'div',
     {
@@ -102,7 +132,7 @@ function card({ imageUrl, kicker, title, accent, footer }) {
   )
 }
 
-export async function onRequest(context) {
+export async function onRequest(context: EventContext<Env, string, Record<string, never>>): Promise<Response> {
   const url = new URL(context.request.url)
   const type = url.searchParams.get('type')
   const id = url.searchParams.get('id')
@@ -114,14 +144,14 @@ export async function onRequest(context) {
   }
   const isTV = type === 'tv'
 
-  let details
+  let details: OgDetails
   try {
     const target = new URL(`${TMDB_BASE}/${type}/${id}`)
     target.searchParams.set('append_to_response', isTV ? 'aggregate_credits' : 'credits')
     target.searchParams.set('api_key', apiKey)
     const r = await fetch(target)
     if (!r.ok) throw new Error()
-    details = await r.json()
+    details = (await r.json()) as OgDetails
   } catch {
     return new Response('tmdb error', { status: 502 })
   }

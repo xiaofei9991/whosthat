@@ -49,11 +49,11 @@ V1 唯一目标：**让 Google 能收录、让种子用户能用**。不加任�
 
 1. ✅ **"Who plays X in Y" pSEO 页面**——每个角色一个问题页（详见 §3）。这是流量杠杆最大的一项，优先做。
 2. ✅ **集级 spoiler shield**——从"看到第 N 季"细化到"看到第 N 季第 E 集"。实现：整季用 season aggregate_credits，零头集数逐集拉 episode credits（含 guest stars）合并。
-3. ✅ **分享卡片（OG image）**——`functions/api/og.js`（`workers-og`）动态生成 1200×630 卡片，page 函数已接入 og:image。
-4. ✅ **Watchlist / 观看进度记忆**——`src/progress.js`（localStorage），剧集页 shield 选择自动保存并在回访时恢复，首页新增 "Your shows" 区块。
-5. ✅ **PWA**——vite-plugin-pwa（autoUpdate + workbox 运行时缓存 TMDB API/图片），图标由 `scripts/generate-icons.mjs` 生成。
+3. ✅ **分享卡片（OG image）**——`functions/api/og.ts`（`workers-og`）动态生成 1200×630 卡片，page 函数已接入 og:image。
+4. ✅ **Watchlist / 观看进度记忆**——`src/progress.ts`（localStorage），剧集页 shield 选择自动保存并在回访时恢复，首页新增 "Your shows" 区块。
+5. ✅ **PWA**——vite-plugin-pwa（autoUpdate + workbox 运行时缓存 TMDB API/图片），图标由 `npx tsx scripts/generate-icons.ts` 生成。
 6. ✅ **sitemap 自动放量**——按天线性增长（1000 → 5000，每天 +20，约 200 天走完），顺序只追加不重排，兼顾新域名爬取预算与长尾覆盖；无需人工盯。
-7. ✅ **多语言（中英）**——`src/i18n.js`（字符串字典 + localStorage `wt.lang`，浏览器语言自动检测），api.js 全局带 TMDB `language` 参数，静态页有中文版，头部有 中/EN 切换（切换即整页 reload 重取数据）。
+7. ✅ **多语言（中英）**——`src/i18n.ts`（字符串字典 + localStorage `wt.lang`，浏览器语言自动检测），`src/api.ts` 全局带 TMDB `language` 参数，静态页有中文版，头部有 中/EN 切换（切换即整页 reload 重取数据）。
 
 ### V3 — 变现版（第 9 周起，前提：V2 指标达标）
 

@@ -1,11 +1,11 @@
 // Post-build step: inject crawler-visible content into dist/index.html for the
 // homepage. Static "/" is served from dist; the catch-all Pages Function only
 // intercepts content routes. Everything is wrapped in HOME-HEAD / HOME-BODY
-// markers so functions/_lib/page.js can strip them when it reuses index.html
+// markers so functions/_lib/page.ts can strip them when it reuses index.html
 // as the template for movie/tv/season/who-plays pages.
 //
 // IMPORTANT: the body block must not contain a literal "</div>"
-// (functions/_lib/page.js replaces the root div with a non-greedy regex).
+// (functions/_lib/page.ts replaces the root div with a non-greedy regex).
 import { readFileSync, writeFileSync } from 'node:fs'
 
 const SITE = process.env.SITE_ORIGIN || 'https://whosthatcast.com'
@@ -22,7 +22,15 @@ if (!apiKey) {
   }
 }
 
-function slugify(text) {
+type TrendingItem = {
+  id: number
+  media_type?: string
+  title?: string
+  name?: string
+}
+
+// Keep in sync with src/slugify.ts.
+function slugify(text: string | null | undefined): string {
   return String(text || '')
     .toLowerCase()
     .normalize('NFKD')
@@ -31,7 +39,7 @@ function slugify(text) {
     .replace(/^-+|-+$/g, '')
 }
 
-function escapeHtml(s) {
+function escapeHtml(s: string | null | undefined): string {
   return String(s ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -39,21 +47,23 @@ function escapeHtml(s) {
     .replaceAll('"', '&quot;')
 }
 
-let trending = []
+let trending: TrendingItem[] = []
 if (apiKey) {
   try {
     const url = new URL('https://api.themoviedb.org/3/trending/all/week')
     url.searchParams.set('api_key', apiKey)
     const r = await fetch(url)
     if (r.ok) {
-      trending = ((await r.json()).results || [])
+      const data = (await r.json()) as { results?: TrendingItem[] }
+      trending = (data.results || [])
         .filter((x) => x.media_type === 'movie' || x.media_type === 'tv')
         .slice(0, 18)
     } else {
       console.warn(`inject-home-seo: TMDB responded ${r.status}, proceeding without trending links`)
     }
   } catch (e) {
-    console.warn(`inject-home-seo: TMDB fetch failed (${e.message}), proceeding without trending links`)
+    const message = e instanceof Error ? e.message : String(e)
+    console.warn(`inject-home-seo: TMDB fetch failed (${message}), proceeding without trending links`)
   }
 } else {
   console.warn('inject-home-seo: no TMDB_API_KEY, proceeding without trending links')

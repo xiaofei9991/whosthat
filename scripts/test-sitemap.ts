@@ -3,17 +3,19 @@ import {
   assembleSitemapXml,
   currentCap,
   fetchSitemapData,
-} from './lib/sitemap.mjs'
+} from './lib/sitemap'
 
-const apiKey =
-  process.env.TMDB_API_KEY ||
-  readFileSync(new URL('../.env', import.meta.url), 'utf8').match(/TMDB_API_KEY=(.+)/)[1].trim()
+const envMatch = process.env.TMDB_API_KEY
+  ? null
+  : readFileSync(new URL('../.env', import.meta.url), 'utf8').match(/TMDB_API_KEY=(.+)/)
+const apiKey = process.env.TMDB_API_KEY || envMatch?.[1]?.trim()
+if (!apiKey) throw new Error('TMDB_API_KEY is not configured')
 
 const SITE = process.env.SITE_ORIGIN || 'https://whosthatcast.com'
 
-function summarize(label, xml, ms) {
-  const urls = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1])
-  const byType = {}
+function summarize(label: string, xml: string, ms: number): string[] {
+  const urls = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].flatMap((m) => (m[1] ? [m[1]] : []))
+  const byType: Record<string, number> = {}
   for (const u of urls) {
     const seg = u.includes('/season-')
       ? 'season'

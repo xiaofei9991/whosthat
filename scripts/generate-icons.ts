@@ -1,5 +1,5 @@
 // One-off: renders PWA PNG icons from the favicon artwork. Run with:
-//   node scripts/generate-icons.mjs
+//   npx tsx scripts/generate-icons.ts
 import { readFileSync, writeFileSync } from 'node:fs'
 import sharp from 'sharp'
 
@@ -7,7 +7,8 @@ const favicon = readFileSync('public/favicon.svg', 'utf8')
 
 // Maskable variant: full-bleed square (no rounded corners) with the glyph
 // scaled into the ~80% safe zone, so launcher masks don't clip it.
-const glyph = favicon.match(/<g transform[^>]*>[\s\S]*?<\/g>/)[0]
+const glyph = favicon.match(/<g transform[^>]*>[\s\S]*?<\/g>/)?.[0]
+if (!glyph) throw new Error('generate-icons: could not find glyph <g> in public/favicon.svg')
 const maskable = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <rect width="32" height="32" fill="#fbbf24"/>
   <g transform="translate(6.4 6.4) scale(0.8)">

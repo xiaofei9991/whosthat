@@ -1,9 +1,12 @@
 // Minimal client-side i18n. Language is stored locally; switching reloads the
 // page so every TMDB request refetches with the new `language` param.
 
+export type Lang = 'en' | 'zh'
+export type MessageKey = keyof typeof STRINGS.en
+
 const LANG_KEY = 'wt.lang'
 
-export function getLang() {
+export function getLang(): Lang {
   try {
     const v = localStorage.getItem(LANG_KEY)
     if (v === 'zh' || v === 'en') return v
@@ -13,7 +16,7 @@ export function getLang() {
   return (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en'
 }
 
-export function setLang(lang) {
+export function setLang(lang: Lang): void {
   try {
     localStorage.setItem(LANG_KEY, lang)
   } catch {
@@ -22,13 +25,16 @@ export function setLang(lang) {
   window.location.reload()
 }
 
-export function tmdbLang() {
+export function tmdbLang(): 'zh-CN' | 'en-US' {
   return getLang() === 'zh' ? 'zh-CN' : 'en-US'
 }
 
-export function t(key, vars) {
-  let s = STRINGS[getLang()]?.[key] ?? STRINGS.en[key] ?? key
-  if (vars) for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, v)
+export function t(
+  key: MessageKey,
+  vars?: Record<string, string | number | null | undefined>,
+): string {
+  let s: string = STRINGS[getLang()][key] ?? STRINGS.en[key] ?? String(key)
+  if (vars) for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, String(v ?? ''))
   return s
 }
 
@@ -114,6 +120,7 @@ const STRINGS = {
     'title.season': "{name} Season {n} Characters & Cast — No Spoilers | Who's That?",
     'title.wp': "Who Plays {c} in {t}? — {p} | Who's That?",
     'recentSearches': 'Recent searches',
+    continue: 'Continue',
   },
   zh: {
     tagline: '影视无剧透角色速查',
@@ -195,5 +202,9 @@ const STRINGS = {
     'title.season': "{name} 第 {n} 季角色演员表 — 无剧透 | Who's That?",
     'title.wp': "《{t}》{c} 的扮演者是谁？— {p} | Who's That?",
     'recentSearches': '最近搜索',
+    continue: '继续看',
   },
-}
+} as const
+
+const _zhComplete: Record<MessageKey, string> = STRINGS.zh
+void _zhComplete

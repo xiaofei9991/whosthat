@@ -10,8 +10,20 @@ const MAX_HOT_TITLES = 50
 const WHO_PLAYS_CAST_LIMIT = 8
 const CREDIT_CHUNK = 5
 
-// Keep in sync with src/slugify.js.
-function slugify(text) {
+type TmdbItem = {
+  id: number
+  media_type?: 'movie' | 'tv' | string
+  title?: string
+  name?: string
+  popularity?: number
+  release_date?: string
+  first_air_date?: string
+}
+type CastMember = { id: number; character?: string; roles?: { character?: string }[] }
+type CastEntry = { item: TmdbItem; cast: CastMember[]; seasons: number }
+
+// Keep in sync with src/slugify.ts.
+function slugify(text: string | null | undefined): string {
   return String(text || '')
     .toLowerCase()
     .normalize('NFKD')
@@ -20,7 +32,7 @@ function slugify(text) {
     .replace(/^-+|-+$/g, '')
 }
 
-function escapeXml(s) {
+function escapeXml(s: string): string {
   return String(s)
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -29,17 +41,26 @@ function escapeXml(s) {
     .replaceAll("'", '&apos;')
 }
 
-function utcDay(d = new Date()) {
+function utcDay(d = new Date()): number {
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
 }
 
-function parseDate(s) {
+function parseDate(s: string | undefined): number | null {
   if (!s || !/^\d{4}-\d{2}-\d{2}/.test(s)) return null
-  const [y, m, day] = s.slice(0, 10).split('-').map(Number)
+  const parts = s.slice(0, 10).split('-').map(Number)
+  const y = parts[0]
+  const m = parts[1]
+  const day = parts[2]
+  if (y == null || m == null || day == null) return null
   return Date.UTC(y, m - 1, day)
 }
 
-function inWindow(dateStr, pastDays, futureDays, today = utcDay()) {
+function inWindow(
+  dateStr: string | undefined,
+  pastDays: number,
+  futureDays: number,
+  today = utcDay(),
+): boolean {
   const t = parseDate(dateStr)
   if (t == null) return false
   const past = today - pastDays * 86400000
@@ -47,22 +68,22 @@ function inWindow(dateStr, pastDays, futureDays, today = utcDay()) {
   return t >= past && t <= future
 }
 
-async function fetchPage(path, apiKey, page = 1) {
+async function fetchPage(path: string, apiKey: string, page = 1): Promise<TmdbItem[]> {
   const url = new URL(TMDB_BASE + path)
   url.searchParams.set('page', String(page))
   url.searchParams.set('api_key', apiKey)
   try {
     const r = await fetch(url)
     if (!r.ok) return []
-    const d = await r.json()
+    const d = (await r.json()) as { results?: TmdbItem[] }
     return d.results || []
   } catch {
     return []
   }
 }
 
-async function mapInChunks(items, chunkSize, fn) {
-  const out = []
+async function mapInChunks<T, R>(items: T[], chunkSize: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = []
   for (let i = 0; i < items.length; i += chunkSize) {
     out.push(...(await Promise.all(items.slice(i, i + chunkSize).map(fn))))
   }
@@ -73,11 +94,15 @@ export async function buildHotSitemapXml({
   apiKey,
   site = DEFAULT_SITE,
   now = Date.now(),
-} = {}) {
+}: {
+  apiKey?: string
+  site?: string
+  now?: number
+} = {}): Promise<string> {
   if (!apiKey) throw new Error('TMDB_API_KEY is not configured')
 
   const today = utcDay(new Date(now))
-  const isoDay = (ms) => new Date(ms).toISOString().slice(0, 10)
+  const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10)
   const [nowPlaying, upcoming, airingToday, onTheAir, recentPremieres] = await Promise.all([
     fetchPage('/movie/now_playing', apiKey, 1),
     fetchPage('/movie/upcoming', apiKey, 1),
@@ -90,10 +115,10 @@ export async function buildHotSitemapXml({
     ),
   ])
 
-  const seen = new Set()
-  const titles = []
+  const seen = new Set<string>()
+  const titles: TmdbItem[] = []
 
-  const push = (item, mediaType, keep) => {
+  const push = (item: TmdbItem, mediaType: 'movie' | 'tv', keep: boolean) => {
     if (!keep) return
     const id = item.id
     if (!id) return
@@ -129,10 +154,10 @@ export async function buildHotSitemapXml({
     push(item, 'tv', true)
   }
 
-  titles.sort((a, b) => b.popularity - a.popularity || a.id - b.id)
+  titles.sort((a, b) => (b.popularity || 0) - (a.popularity || 0) || a.id - b.id)
   const candidates = titles.slice(0, MAX_HOT_TITLES)
 
-  const castLists = await mapInChunks(candidates, CREDIT_CHUNK, async (item) => {
+  const castLists = await mapInChunks(candidates, CREDIT_CHUNK, async (item): Promise<CastEntry> => {
     const isTV = item.media_type === 'tv'
     const url = isTV
       ? new URL(`${TMDB_BASE}/tv/${item.id}`)
@@ -141,7 +166,13 @@ export async function buildHotSitemapXml({
     url.searchParams.set('api_key', apiKey)
     try {
       const r = await fetch(url)
-      const d = r.ok ? await r.json() : {}
+      const d = r.ok
+        ? ((await r.json()) as {
+            cast?: CastMember[]
+            aggregate_credits?: { cast?: CastMember[] }
+            number_of_seasons?: number
+          })
+        : {}
       let cast = (isTV ? d.aggregate_credits?.cast : d.cast) || []
       cast = cast.slice(0, WHO_PLAYS_CAST_LIMIT)
       cast.sort((a, b) => a.id - b.id)
@@ -165,7 +196,7 @@ export async function buildHotSitemapXml({
   })
 
   const lastmod = new Date(today).toISOString().slice(0, 10)
-  const urls = []
+  const urls: string[] = []
 
   for (const entry of castLists) {
     const { item, cast, seasons } = entry
@@ -179,7 +210,7 @@ export async function buildHotSitemapXml({
     }
 
     const isTV = item.media_type === 'tv'
-    const who = []
+    const who: string[] = []
     for (const c of cast) {
       const character = isTV
         ? (c.roles || []).map((r) => r.character).filter(Boolean).join(' / ')

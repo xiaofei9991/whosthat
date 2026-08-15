@@ -13,13 +13,13 @@ const RAMP_BASE = 1000
 const RAMP_PER_DAY = 20 // 1000 -> 5000 over ~200 days
 const RAMP_MAX = 5000
 
-export function currentCap(now = Date.now()) {
+export function currentCap(now = Date.now()): number {
   const days = Math.max(0, Math.floor((now - RAMP_START_UTC) / 86400000))
   return Math.min(RAMP_MAX, RAMP_BASE + days * RAMP_PER_DAY)
 }
 
-// Keep in sync with src/slugify.js.
-function slugify(text) {
+// Keep in sync with src/slugify.ts.
+function slugify(text: string | null | undefined): string {
   return String(text || '')
     .toLowerCase()
     .normalize('NFKD')
@@ -28,7 +28,7 @@ function slugify(text) {
     .replace(/^-+|-+$/g, '')
 }
 
-function escapeXml(s) {
+function escapeXml(s: string): string {
   return String(s)
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -57,33 +57,55 @@ const EXTRA_SOURCES = [
 const WHO_PLAYS_TITLE_BASE = 60
 const WHO_PLAYS_CAST_LIMIT = 8
 
-async function mapInChunks(items, chunkSize, fn) {
-  const out = []
+type Source = { path: string; from: number; to: number }
+type TmdbItem = {
+  id: number
+  media_type?: 'movie' | 'tv' | string
+  title?: string
+  name?: string
+  _core?: boolean
+}
+type CastEntry = {
+  item: TmdbItem
+  cast: { id: number; character?: string; roles?: { character?: string }[] }[]
+  seasons: number
+}
+
+async function mapInChunks<T, R>(items: T[], chunkSize: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = []
   for (let i = 0; i < items.length; i += chunkSize) {
     out.push(...(await Promise.all(items.slice(i, i + chunkSize).map(fn))))
   }
   return out
 }
 
-function fetchTitles(sources, apiKey) {
+function fetchTitles(sources: Source[], apiKey: string): Promise<TmdbItem[]> {
   const requests = sources.flatMap(({ path, from, to }) =>
     Array.from({ length: to - from + 1 }, (_, i) => {
       const url = new URL(TMDB_BASE + path)
       url.searchParams.set('page', String(from + i))
       url.searchParams.set('api_key', apiKey)
-      const impliedType = path.startsWith('/movie/') ? 'movie' : path.startsWith('/tv/') ? 'tv' : null
+      const impliedType: TmdbItem['media_type'] = path.startsWith('/movie/')
+        ? 'movie'
+        : path.startsWith('/tv/')
+          ? 'tv'
+          : undefined
       return fetch(url)
         .then((r) => (r.ok ? r.json() : { results: [] }))
-        .then((d) =>
-          (d.results || []).map((item) => ({ ...item, media_type: item.media_type || impliedType })),
-        )
-        .catch(() => [])
+        .then((raw) => {
+          const d = raw as { results?: TmdbItem[] }
+          return (d.results || []).map((item) => ({
+            ...item,
+            media_type: item.media_type || impliedType,
+          }))
+        })
+        .catch((): TmdbItem[] => [])
     }),
   )
   return Promise.all(requests).then((pages) => pages.flat())
 }
 
-function candidateLimit(titles, cap) {
+function candidateLimit(titles: TmdbItem[], cap: number): number {
   // Each candidate beyond the head-60 contributes ~WHO_PLAYS_CAST_LIMIT URLs
   // (candidates are id-sorted, so the first few hundred are movies with no
   // season pages). Budget with /8 plus a small margin so the emitted list
@@ -98,7 +120,10 @@ function candidateLimit(titles, cap) {
   return Math.min(titles.length, WHO_PLAYS_TITLE_BASE + beyondBase)
 }
 
-export async function fetchSitemapData(apiKey, cap) {
+export async function fetchSitemapData(
+  apiKey: string,
+  cap: number,
+): Promise<{ titles: TmdbItem[]; castLists: CastEntry[] }> {
   if (!apiKey) throw new Error('TMDB_API_KEY is not configured')
 
   const coreItems = await fetchTitles(CORE_SOURCES, apiKey)
@@ -111,8 +136,8 @@ export async function fetchSitemapData(apiKey, cap) {
       .filter((i) => i.media_type === 'movie' || i.media_type === 'tv')
       .map((i) => `${i.media_type}-${i.id}`),
   )
-  const seen = new Set()
-  const titles = []
+  const seen = new Set<string>()
+  const titles: TmdbItem[] = []
   for (const item of [...coreItems, ...extraItems]) {
     if (item.media_type !== 'movie' && item.media_type !== 'tv') continue
     const key = `${item.media_type}-${item.id}`
@@ -140,7 +165,13 @@ export async function fetchSitemapData(apiKey, cap) {
     url.searchParams.set('api_key', apiKey)
     try {
       const r = await fetch(url)
-      const d = r.ok ? await r.json() : {}
+      const d = r.ok
+        ? ((await r.json()) as {
+            cast?: CastEntry['cast']
+            aggregate_credits?: { cast?: CastEntry['cast'] }
+            number_of_seasons?: number
+          })
+        : {}
       let cast = (isTV ? d.aggregate_credits?.cast : d.cast) || []
       cast = cast.slice(0, WHO_PLAYS_CAST_LIMIT)
       // Sort cast by id for stable order
@@ -156,23 +187,33 @@ export async function fetchSitemapData(apiKey, cap) {
   return { titles, castLists }
 }
 
-export function assembleSitemapXml({ titles, castLists, site = DEFAULT_SITE, cap }) {
-  const titleUrl = (item) => {
+export function assembleSitemapXml({
+  titles,
+  castLists,
+  site = DEFAULT_SITE,
+  cap,
+}: {
+  titles: TmdbItem[]
+  castLists: CastEntry[]
+  site?: string
+  cap: number
+}): string {
+  const titleUrl = (item: TmdbItem) => {
     const slug = slugify(item.title || item.name)
     return `${site}/${item.media_type}/${item.id}${slug ? `/${slug}` : ''}`
   }
 
-  const seasonUrls = (entry) => {
+  const seasonUrls = (entry: CastEntry) => {
     const slug = slugify(entry.item.title || entry.item.name)
     return Array.from(
       { length: entry.seasons },
       (_, i) => `${site}/tv/${entry.item.id}/season-${i + 1}${slug ? `/${slug}` : ''}`,
     )
   }
-  const whoPlaysUrls = (entry) => {
+  const whoPlaysUrls = (entry: CastEntry) => {
     const isTV = entry.item.media_type === 'tv'
     const titleName = entry.item.title || entry.item.name
-    const out = []
+    const out: string[] = []
     for (const c of entry.cast) {
       const character = isTV
         ? (c.roles || []).map((r) => r.character).filter(Boolean).join(' / ')
@@ -215,7 +256,12 @@ export async function buildSitemapXml({
   apiKey,
   site = DEFAULT_SITE,
   now = Date.now(),
-} = {}) {
+}: {
+  apiKey?: string
+  site?: string
+  now?: number
+} = {}): Promise<string> {
+  if (!apiKey) throw new Error('TMDB_API_KEY is not configured')
   const cap = currentCap(now)
   const data = await fetchSitemapData(apiKey, cap)
   return assembleSitemapXml({ ...data, site, cap })

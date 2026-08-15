@@ -1,19 +1,22 @@
 import { defineConfig, loadEnv } from 'vite'
+import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 
 const TMDB_BASE = 'https://api.themoviedb.org/3'
 const ALLOWED_PATH = /^\/(search|movie|tv|person|trending)\//
 
 // Dev-only proxy so the TMDB key never reaches the browser.
-// In production the same logic runs as a Cloudflare Pages Function (functions/api/tmdb.js).
-function tmdbDevProxy(apiKey) {
+// In production the same logic runs as a Cloudflare Pages Function (functions/api/tmdb.ts).
+function tmdbDevProxy(apiKey: string | undefined): Plugin {
   return {
     name: 'tmdb-dev-proxy',
     configureServer(server) {
-      server.middlewares.use('/api/tmdb', async (req, res) => {
-        const url = new URL(req.url, 'http://localhost')
+      server.middlewares.use('/api/tmdb', (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+        void (async () => {
+        const url = new URL(req.url ?? '', 'http://localhost')
         const path = url.searchParams.get('path') || ''
         res.setHeader('content-type', 'application/json')
         if (!apiKey) {
@@ -39,6 +42,7 @@ function tmdbDevProxy(apiKey) {
           res.statusCode = 502
           res.end(JSON.stringify({ error: String(e) }))
         }
+        })().catch(next)
       })
     },
   }

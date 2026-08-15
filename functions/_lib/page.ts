@@ -1,8 +1,8 @@
 const TMDB_BASE = 'https://api.themoviedb.org/3'
 const DEFAULT_SITE = 'https://whosthatcast.com'
 
-// Keep in sync with src/slugify.js (functions can't import from src/).
-function slugify(text) {
+// Keep in sync with src/slugify.ts (functions can't import from src/).
+function slugify(text: string | null | undefined): string {
   return String(text || '')
     .toLowerCase()
     .normalize('NFKD')
@@ -11,7 +11,7 @@ function slugify(text) {
     .replace(/^-+|-+$/g, '')
 }
 
-function escapeHtml(s) {
+function escapeHtml(s: string | number | null | undefined): string {
   return String(s ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -19,7 +19,7 @@ function escapeHtml(s) {
     .replaceAll('"', '&quot;')
 }
 
-function breadcrumbLd(items) {
+function breadcrumbLd(items: [string, string?][]): Record<string, unknown> {
   return {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -32,7 +32,10 @@ function breadcrumbLd(items) {
   }
 }
 
-function htmlResponse(html, { status = 200, maxAge = 86400, swr = 604800 } = {}) {
+function htmlResponse(
+  html: string,
+  { status = 200, maxAge = 86400, swr = 604800 }: { status?: number; maxAge?: number; swr?: number } = {},
+): Response {
   return new Response(html, {
     status,
     headers: {
@@ -42,9 +45,16 @@ function htmlResponse(html, { status = 200, maxAge = 86400, swr = 604800 } = {})
   })
 }
 
-// Static-page meta. FAQ answers are duplicated from src/App.jsx STATIC_PAGES
+// Static-page meta. FAQ answers are duplicated from src/App.tsx STATIC_PAGES
 // (functions can't import from src/); keep the two in sync.
-const STATIC_META = {
+type StaticMeta = {
+  title: string
+  description: string
+  h1: string
+  faqs?: [string, string][]
+}
+
+const STATIC_META: Record<'about' | 'faq' | 'privacy', StaticMeta> = {
   about: {
     title: "About | Who's That?",
     description:
@@ -91,33 +101,59 @@ const STATIC_META = {
   },
 }
 
-function extractCast(details, isTV) {
+type TmdbRole = { character?: string }
+type TmdbPersonCredit = {
+  id?: number
+  name?: string
+  character?: string
+  profile_path?: string | null
+  roles?: TmdbRole[]
+}
+type TmdbDetails = {
+  id: number
+  title?: string
+  name?: string
+  release_date?: string
+  first_air_date?: string
+  poster_path?: string | null
+  number_of_seasons?: number
+  credits?: { cast?: TmdbPersonCredit[] }
+  aggregate_credits?: { cast?: TmdbPersonCredit[] }
+}
+
+function extractCast(details: TmdbDetails, isTV: boolean): { name: string; character: string }[] {
   const raw = (isTV ? details.aggregate_credits : details.credits)?.cast || []
   return raw.slice(0, 20).map((c) => ({
-    name: c.name,
+    name: c.name ?? '',
     character: isTV
       ? c.roles?.map((r) => r.character).filter(Boolean).join(' / ') || '—'
       : c.character || '—',
   }))
 }
 
-function parseRoute(pathname) {
+type ParsedRoute =
+  | { kind: 'static'; page: 'about' | 'faq' | 'privacy' }
+  | { kind: 'whoplays'; type: 'movie' | 'tv'; id: string; personId: string }
+  | { kind: 'season'; type: 'tv'; id: string; season: string }
+  | { kind: 'title'; type: 'movie' | 'tv'; id: string }
+
+function parseRoute(pathname: string): ParsedRoute | null {
   const staticPage = pathname.match(/^\/(about|faq|privacy)\/?$/)
-  if (staticPage) return { kind: 'static', page: staticPage[1] }
+  if (staticPage) return { kind: 'static', page: staticPage[1] as 'about' | 'faq' | 'privacy' }
 
   const who = pathname.match(/^\/who-plays\/(movie|tv)\/(\d+)\/(\d+)/)
-  if (who) return { kind: 'whoplays', type: who[1], id: who[2], personId: who[3] }
+  if (who) return { kind: 'whoplays', type: who[1] as 'movie' | 'tv', id: who[2]!, personId: who[3]! }
 
   const season = pathname.match(/^\/tv\/(\d+)\/season-(\d+)/)
-  if (season) return { kind: 'season', type: 'tv', id: season[1], season: season[2] }
+  if (season) return { kind: 'season', type: 'tv', id: season[1]!, season: season[2]! }
 
   const title = pathname.match(/^\/(movie|tv)\/(\d+)/)
-  if (title) return { kind: 'title', type: title[1], id: title[2] }
+  if (title) return { kind: 'title', type: title[1] as 'movie' | 'tv', id: title[2]! }
 
   return null
 }
 
-async function loadTemplate(env, request) {
+async function loadTemplate(env: Env, request: Request): Promise<string> {
   const asset = await env.ASSETS.fetch(new URL('/index.html', request.url))
   if (!asset.ok) throw new Error('index.html missing from deployment')
   return (await asset.text())
@@ -125,7 +161,13 @@ async function loadTemplate(env, request) {
     .replace(/<!--HOME-BODY-START-->[\s\S]*?<!--HOME-BODY-END-->/, '')
 }
 
-export async function renderPage({ request, env }) {
+export async function renderPage({
+  request,
+  env,
+}: {
+  request: Request
+  env: Env
+}): Promise<Response> {
   const site = env.SITE_ORIGIN || DEFAULT_SITE
   const url = new URL(request.url)
   const route = parseRoute(url.pathname)
@@ -134,7 +176,7 @@ export async function renderPage({ request, env }) {
     return env.ASSETS.fetch(request)
   }
 
-  let html
+  let html: string
   try {
     html = await loadTemplate(env, request)
   } catch {
@@ -183,7 +225,11 @@ export async function renderPage({ request, env }) {
     return htmlResponse(out)
   }
 
-  const { kind, type, id, personId, season } = route
+  const kind = route.kind
+  const type = route.type
+  const id = route.id
+  const personId = route.kind === 'whoplays' ? route.personId : undefined
+  const season = route.kind === 'season' ? route.season : undefined
   if ((type !== 'movie' && type !== 'tv') || !/^\d+$/.test(String(id))) {
     return serveFallback()
   }
@@ -194,14 +240,14 @@ export async function renderPage({ request, env }) {
   const apiKey = env.TMDB_API_KEY
   if (!apiKey) return serveFallback()
 
-  let details
+  let details: TmdbDetails
   try {
     const target = new URL(`${TMDB_BASE}/${type}/${id}`)
     target.searchParams.set('append_to_response', isTV ? 'aggregate_credits' : 'credits')
     target.searchParams.set('api_key', apiKey)
     const r = await fetch(target)
     if (!r.ok) throw new Error(`TMDB ${r.status}`)
-    details = await r.json()
+    details = (await r.json()) as TmdbDetails
   } catch {
     return serveFallback()
   }
@@ -216,16 +262,18 @@ export async function renderPage({ request, env }) {
 
   if (isSeason) {
     const n = Number(season)
-    let seasonCast = []
+    let seasonCast: { name: string; character: string }[] = []
     try {
       const target = new URL(`${TMDB_BASE}/tv/${id}/season/${n}/aggregate_credits`)
       target.searchParams.set('api_key', apiKey)
       const r = await fetch(target)
       if (r.ok)
-        seasonCast = ((await r.json()).cast || []).slice(0, 20).map((c) => ({
-          name: c.name,
-          character: c.roles?.map((r2) => r2.character).filter(Boolean).join(' / ') || '—',
-        }))
+        seasonCast = (((await r.json()) as { cast?: TmdbPersonCredit[] }).cast || [])
+          .slice(0, 20)
+          .map((c) => ({
+            name: c.name ?? '',
+            character: c.roles?.map((r2) => r2.character).filter(Boolean).join(' / ') || '—',
+          }))
     } catch {
       /* keep empty cast */
     }

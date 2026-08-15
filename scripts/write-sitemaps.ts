@@ -3,8 +3,8 @@
 // Worker (free plan caps subrequests at 50). Daily freshness comes from the
 // Cloudflare Deploy Hook (see .github/workflows/daily-rebuild.yml).
 import { readFileSync, writeFileSync } from 'node:fs'
-import { buildSitemapXml } from './lib/sitemap.mjs'
-import { buildHotSitemapXml } from './lib/sitemap-hot.mjs'
+import { buildSitemapXml } from './lib/sitemap'
+import { buildHotSitemapXml } from './lib/sitemap-hot'
 
 const SITE = process.env.SITE_ORIGIN || 'https://whosthatcast.com'
 const DIST = new URL('../dist/', import.meta.url)
@@ -34,7 +34,7 @@ const [main, hot] = await Promise.all([
 writeFileSync(new URL('sitemap.xml', DIST), main)
 writeFileSync(new URL('sitemap-hot.xml', DIST), hot)
 
-const count = (xml) => (xml.match(/<url>/g) || []).length
+const count = (xml: string) => (xml.match(/<url>/g) || []).length
 console.log(
   `write-sitemaps: sitemap.xml ${count(main)} urls, sitemap-hot.xml ${count(hot)} urls (${Date.now() - t0}ms)`,
 )

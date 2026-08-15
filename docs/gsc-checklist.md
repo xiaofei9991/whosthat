@@ -16,7 +16,7 @@
    - Manually inspect the first 20-30 who-plays pages for "Indexed" status
 
 5. **Repeat weekly**
-   - Run `node scripts/test-sitemap.mjs`
+   - Run `npx tsx scripts/test-sitemap.ts`
    - Check if any pages dropped from indexing
 
 **Current status after my actions:**
