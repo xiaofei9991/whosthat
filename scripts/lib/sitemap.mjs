@@ -1,5 +1,5 @@
 const TMDB_BASE = 'https://api.themoviedb.org/3'
-const SITE = process.env.SITE_ORIGIN || 'https://whosthatcast.com'
+const DEFAULT_SITE = 'https://whosthatcast.com'
 
 // --- Gradual rollout ---------------------------------------------------------
 // A brand-new domain gets a tiny crawl budget; dumping thousands of URLs into
@@ -13,12 +13,12 @@ const RAMP_BASE = 1000
 const RAMP_PER_DAY = 20 // 1000 -> 5000 over ~200 days
 const RAMP_MAX = 5000
 
-function currentCap() {
-  const days = Math.max(0, Math.floor((Date.now() - RAMP_START_UTC) / 86400000))
+export function currentCap(now = Date.now()) {
+  const days = Math.max(0, Math.floor((now - RAMP_START_UTC) / 86400000))
   return Math.min(RAMP_MAX, RAMP_BASE + days * RAMP_PER_DAY)
 }
 
-// Keep in sync with src/slugify.js (api functions can't import from src/).
+// Keep in sync with src/slugify.js.
 function slugify(text) {
   return String(text || '')
     .toLowerCase()
@@ -83,11 +83,23 @@ function fetchTitles(sources, apiKey) {
   return Promise.all(requests).then((pages) => pages.flat())
 }
 
-export default async function handler(req, res) {
-  const apiKey = process.env.TMDB_API_KEY
-  if (!apiKey) return res.status(500).send('TMDB_API_KEY is not configured')
+function candidateLimit(titles, cap) {
+  // Each candidate beyond the head-60 contributes ~WHO_PLAYS_CAST_LIMIT URLs
+  // (candidates are id-sorted, so the first few hundred are movies with no
+  // season pages). Budget with /8 plus a small margin so the emitted list
+  // actually reaches today's cap; extra candidates only append at the tail,
+  // so overshooting is harmless.
+  const fixedCount = 1 + titles.length
+  const headYield = WHO_PLAYS_TITLE_BASE * WHO_PLAYS_CAST_LIMIT
+  const beyondBase = Math.max(
+    0,
+    Math.ceil((cap - fixedCount - headYield) / WHO_PLAYS_CAST_LIMIT) + 2,
+  )
+  return Math.min(titles.length, WHO_PLAYS_TITLE_BASE + beyondBase)
+}
 
-  const cap = currentCap()
+export async function fetchSitemapData(apiKey, cap) {
+  if (!apiKey) throw new Error('TMDB_API_KEY is not configured')
 
   const coreItems = await fetchTitles(CORE_SOURCES, apiKey)
   // Long-tail titles are only worth fetching once the cap outgrows the core set
@@ -115,28 +127,10 @@ export default async function handler(req, res) {
     return a.id - b.id
   })
 
-  const titleUrl = (item) => {
-    const slug = slugify(item.title || item.name)
-    return `${SITE}/${item.media_type}/${item.id}${slug ? `/${slug}` : ''}`
-  }
+  const candidates = titles.slice(0, candidateLimit(titles, cap))
 
-  // Each candidate beyond the head-60 contributes ~WHO_PLAYS_CAST_LIMIT URLs
-  // (candidates are id-sorted, so the first few hundred are movies with no
-  // season pages). Budget with /8 plus a small margin so the emitted list
-  // actually reaches today's cap; extra candidates only append at the tail,
-  // so overshooting is harmless.
-  const fixedCount = 1 + titles.length
-  const headYield = WHO_PLAYS_TITLE_BASE * WHO_PLAYS_CAST_LIMIT
-  const beyondBase = Math.max(
-    0,
-    Math.ceil((cap - fixedCount - headYield) / WHO_PLAYS_CAST_LIMIT) + 2,
-  )
-  const whoPlaysTitleLimit = Math.min(titles.length, WHO_PLAYS_TITLE_BASE + beyondBase)
-  const candidates = titles.slice(0, whoPlaysTitleLimit)
-
-  // Chunked parallel fetches: sequential awaits blow past the 60s function
-  // limit once the ramp needs credits for hundreds of titles. mapInChunks
-  // preserves input order, so determinism is unaffected.
+  // Chunked parallel fetches. mapInChunks preserves input order, so
+  // determinism is unaffected.
   const castLists = await mapInChunks(candidates, 8, async (item) => {
     const isTV = item.media_type === 'tv'
     const url = isTV
@@ -159,11 +153,20 @@ export default async function handler(req, res) {
     }
   })
 
+  return { titles, castLists }
+}
+
+export function assembleSitemapXml({ titles, castLists, site = DEFAULT_SITE, cap }) {
+  const titleUrl = (item) => {
+    const slug = slugify(item.title || item.name)
+    return `${site}/${item.media_type}/${item.id}${slug ? `/${slug}` : ''}`
+  }
+
   const seasonUrls = (entry) => {
     const slug = slugify(entry.item.title || entry.item.name)
     return Array.from(
       { length: entry.seasons },
-      (_, i) => `${SITE}/tv/${entry.item.id}/season-${i + 1}${slug ? `/${slug}` : ''}`,
+      (_, i) => `${site}/tv/${entry.item.id}/season-${i + 1}${slug ? `/${slug}` : ''}`,
     )
   }
   const whoPlaysUrls = (entry) => {
@@ -176,7 +179,9 @@ export default async function handler(req, res) {
         : c.character
       if (!character) continue
       const slug = slugify(`who plays ${character} in ${titleName}`)
-      out.push(`${SITE}/who-plays/${entry.item.media_type}/${entry.item.id}/${c.id}${slug ? `/${slug}` : ''}`)
+      out.push(
+        `${site}/who-plays/${entry.item.media_type}/${entry.item.id}/${c.id}${slug ? `/${slug}` : ''}`,
+      )
     }
     // Sort who-plays URLs for stable order
     return out.sort()
@@ -188,13 +193,10 @@ export default async function handler(req, res) {
   //   home → core title pages → long-tail title pages
   //   → head-60 seasons → head-60 who-plays
   //   → per-candidate blocks (seasons + who-plays) beyond the head 60
-  // (The previous layout put long-tail title pages *between* two growing
-  // candidate segments; once the ramp released candidates beyond the head 60,
-  // new blocks were inserted mid-list and the prefix broke.)
   const headEntries = castLists.slice(0, WHO_PLAYS_TITLE_BASE)
   const tailEntries = castLists.slice(WHO_PLAYS_TITLE_BASE)
   const urls = [
-    `${SITE}/`,
+    `${site}/`,
     ...titles.filter((t) => t._core).map(titleUrl),
     ...titles.filter((t) => !t._core).map(titleUrl),
     ...headEntries.flatMap(seasonUrls),
@@ -202,13 +204,19 @@ export default async function handler(req, res) {
     ...tailEntries.flatMap((e) => [...seasonUrls(e), ...whoPlaysUrls(e)]),
   ].slice(0, cap)
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+  return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls.map((u) => `  <url><loc>${escapeXml(u)}</loc></url>`).join('\n')}
 </urlset>
 `
+}
 
-  res.setHeader('content-type', 'application/xml; charset=utf-8')
-  res.setHeader('cache-control', 'public, s-maxage=86400, stale-while-revalidate=604800')
-  res.status(200).send(xml)
+export async function buildSitemapXml({
+  apiKey,
+  site = DEFAULT_SITE,
+  now = Date.now(),
+} = {}) {
+  const cap = currentCap(now)
+  const data = await fetchSitemapData(apiKey, cap)
+  return assembleSitemapXml({ ...data, site, cap })
 }

@@ -1,7 +1,5 @@
 import React from 'react'
-import { ImageResponse } from '@vercel/og'
-
-export const config = { runtime: 'edge' }
+import { ImageResponse } from 'workers-og'
 
 const TMDB_BASE = 'https://api.themoviedb.org/3'
 const e = React.createElement
@@ -104,12 +102,12 @@ function card({ imageUrl, kicker, title, accent, footer }) {
   )
 }
 
-export default async function handler(req) {
-  const url = new URL(req.url)
+export async function onRequest(context) {
+  const url = new URL(context.request.url)
   const type = url.searchParams.get('type')
   const id = url.searchParams.get('id')
   const personId = url.searchParams.get('personId')
-  const apiKey = process.env.TMDB_API_KEY
+  const apiKey = context.env.TMDB_API_KEY
 
   if ((type !== 'movie' && type !== 'tv') || !/^\d+$/.test(String(id)) || !apiKey) {
     return new Response('bad request', { status: 400 })
@@ -162,11 +160,16 @@ export default async function handler(req) {
     })
   }
 
-  return new ImageResponse(node, {
-    width: 1200,
-    height: 630,
-    headers: {
-      'cache-control': 'public, s-maxage=604800, stale-while-revalidate=2592000',
-    },
-  })
+  try {
+    return new ImageResponse(node, {
+      width: 1200,
+      height: 630,
+      headers: {
+        'cache-control': 'public, s-maxage=604800, stale-while-revalidate=2592000',
+      },
+    })
+  } catch {
+    if (poster) return Response.redirect(poster, 302)
+    return new Response('og error', { status: 500 })
+  }
 }

@@ -40,7 +40,7 @@ That seemed like a real problem worth a few days, so I built "Who's That?":
 
 And honestly, you don't need face blindness to want this. Anyone who's watched an ensemble show ("wait, is that the guy from episode 2?") has this problem.
 
-Stack: Vite + React, TMDB API for the data, deployed on Vercel. Total budget so far: $0. Built the first working version in a few days, leaning heavily on AI for the boring parts.
+Stack: Vite + React, TMDB API for the data, deployed on Cloudflare Pages. Total budget so far: $0. Built the first working version in a few days, leaning heavily on AI for the boring parts.
 
 Link: https://whosthatcast.com
 
@@ -105,7 +105,7 @@ What it does: search any movie or show, get a grid of character cards (photo, ch
 How it works:
 
 - Vite + React SPA, data from the TMDB API. Season-level filtering uses per-season aggregate_credits; episode-level filtering merges per-episode credits (including guest stars) for the partial season, so a character who debuts in E6 never leaks when you're on E5
-- Deployed on Vercel; a small serverless function injects per-page meta tags/OG/JSON-LD into the SPA shell so title, per-season, and "who plays X in Y" pages are indexable and unfurl properly
+- Deployed on Cloudflare Pages; a small Pages Function injects per-page meta tags/OG/JSON-LD into the SPA shell so title, per-season, and "who plays X in Y" pages are indexable and unfurl properly
 - The spoiler shield is intentionally conservative: if I can't determine when a character first appears, they stay hidden rather than risk leaking
 
 Honest limitations: it's only as good as TMDB's data, which is great for popular shows and spottier for older or niche ones. Guest characters with sparse credits can be mislabeled or missing. And a character's *photo* is whatever TMDB serves, which occasionally reflects a later-season look.

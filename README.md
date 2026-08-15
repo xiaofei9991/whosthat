@@ -8,7 +8,7 @@ For TV shows, a "spoiler shield" lets you hide characters from seasons you haven
 
 - Vite + React 19 + Tailwind CSS 4
 - TMDB API (proxied server-side so the key is never exposed)
-- Deploys to Vercel (`api/tmdb.js` is the production proxy function)
+- Deploys to Cloudflare Pages (`functions/api/tmdb.js` is the production proxy)
 
 ## Local development
 

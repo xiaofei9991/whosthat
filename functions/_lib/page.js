@@ -1,11 +1,7 @@
-import { readFileSync } from 'node:fs'
-import { join, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
-
 const TMDB_BASE = 'https://api.themoviedb.org/3'
-const SITE = process.env.SITE_ORIGIN || 'https://whosthatcast.com'
+const DEFAULT_SITE = 'https://whosthatcast.com'
 
-// Keep in sync with src/slugify.js (api functions can't import from src/).
+// Keep in sync with src/slugify.js (functions can't import from src/).
 function slugify(text) {
   return String(text || '')
     .toLowerCase()
@@ -23,21 +19,6 @@ function escapeHtml(s) {
     .replaceAll('"', '&quot;')
 }
 
-function readIndexHtml() {
-  const candidates = [
-    join(process.cwd(), 'dist', 'index.html'),
-    join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'index.html'),
-  ]
-  for (const p of candidates) {
-    try {
-      return readFileSync(p, 'utf8')
-    } catch {
-      /* try next */
-    }
-  }
-  throw new Error('dist/index.html not found')
-}
-
 function breadcrumbLd(items) {
   return {
     '@context': 'https://schema.org',
@@ -51,8 +32,18 @@ function breadcrumbLd(items) {
   }
 }
 
+function htmlResponse(html, { status = 200, maxAge = 86400, swr = 604800 } = {}) {
+  return new Response(html, {
+    status,
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': `public, s-maxage=${maxAge}, stale-while-revalidate=${swr}`,
+    },
+  })
+}
+
 // Static-page meta. FAQ answers are duplicated from src/App.jsx STATIC_PAGES
-// (api functions can't import from src/); keep the two in sync.
+// (functions can't import from src/); keep the two in sync.
 const STATIC_META = {
   about: {
     title: "About | Who's That?",
@@ -100,7 +91,6 @@ const STATIC_META = {
   },
 }
 
-// Normalizes movie credits and tv aggregate_credits to { character, name }.
 function extractCast(details, isTV) {
   const raw = (isTV ? details.aggregate_credits : details.credits)?.cast || []
   return raw.slice(0, 20).map((c) => ({
@@ -111,31 +101,52 @@ function extractCast(details, isTV) {
   }))
 }
 
-export default async function handler(req, res) {
-  let html
-  try {
-    html = readIndexHtml()
-  } catch {
-    return res.status(500).send('index.html missing from deployment')
-  }
-  // dist/index.html carries homepage-only SEO content injected at build time
-  // (scripts/inject-home-seo.mjs); strip it before using it as the template
-  // for content pages, restoring the bare <div id="root"></div>.
-  html = html
+function parseRoute(pathname) {
+  const staticPage = pathname.match(/^\/(about|faq|privacy)\/?$/)
+  if (staticPage) return { kind: 'static', page: staticPage[1] }
+
+  const who = pathname.match(/^\/who-plays\/(movie|tv)\/(\d+)\/(\d+)/)
+  if (who) return { kind: 'whoplays', type: who[1], id: who[2], personId: who[3] }
+
+  const season = pathname.match(/^\/tv\/(\d+)\/season-(\d+)/)
+  if (season) return { kind: 'season', type: 'tv', id: season[1], season: season[2] }
+
+  const title = pathname.match(/^\/(movie|tv)\/(\d+)/)
+  if (title) return { kind: 'title', type: title[1], id: title[2] }
+
+  return null
+}
+
+async function loadTemplate(env, request) {
+  const asset = await env.ASSETS.fetch(new URL('/index.html', request.url))
+  if (!asset.ok) throw new Error('index.html missing from deployment')
+  return (await asset.text())
     .replace(/\s*<!--HOME-HEAD-START-->[\s\S]*?<!--HOME-HEAD-END-->/, '')
     .replace(/<!--HOME-BODY-START-->[\s\S]*?<!--HOME-BODY-END-->/, '')
+}
 
-  const serveFallback = () => {
-    res.setHeader('content-type', 'text/html; charset=utf-8')
-    res.setHeader('cache-control', 'public, s-maxage=300, stale-while-revalidate=86400')
-    res.status(200).send(html)
+export async function renderPage({ request, env }) {
+  const site = env.SITE_ORIGIN || DEFAULT_SITE
+  const url = new URL(request.url)
+  const route = parseRoute(url.pathname)
+
+  if (!route) {
+    return env.ASSETS.fetch(request)
   }
 
-  // Static pages: proper canonical/meta + FAQPage JSON-LD, so they don't
-  // inherit the homepage canonical baked into dist/index.html.
-  const staticMeta = req.query.kind === 'static' ? STATIC_META[String(req.query.page)] : null
-  if (staticMeta) {
-    const canonical = `${SITE}/${req.query.page}`
+  let html
+  try {
+    html = await loadTemplate(env, request)
+  } catch {
+    return new Response('index.html missing from deployment', { status: 500 })
+  }
+
+  const serveFallback = () => htmlResponse(html, { maxAge: 300, swr: 86400 })
+
+  if (route.kind === 'static') {
+    const staticMeta = STATIC_META[route.page]
+    if (!staticMeta) return serveFallback()
+    const canonical = `${site}/${route.page}`
     const extras = [
       `<link rel="canonical" href="${escapeHtml(canonical)}" />`,
       `<meta property="og:type" content="website" />`,
@@ -169,29 +180,10 @@ export default async function handler(req, res) {
       )
       .replace('</head>', `    ${extras}\n  </head>`)
       .replace('<div id="root"></div>', `<div id="root">${block}</div>`)
-    res.setHeader('content-type', 'text/html; charset=utf-8')
-    res.setHeader('cache-control', 'public, s-maxage=86400, stale-while-revalidate=604800')
-    return res.status(200).send(out)
+    return htmlResponse(out)
   }
 
-  // Rewrites in vercel.json pass type + id (and kind/personId/season for
-  // who-plays and season pages); fall back to parsing the path.
-  let { kind, type, id, personId, season } = req.query
-  if (!type || !id) {
-    const w = (req.url || '').match(/\/who-plays\/(movie|tv)\/(\d+)\/(\d+)/)
-    const s = (req.url || '').match(/\/tv\/(\d+)\/season-(\d+)/)
-    if (w) {
-      kind = 'whoplays'
-      ;[, type, id, personId] = w
-    } else if (s) {
-      kind = 'season'
-      type = 'tv'
-      ;[, id, season] = s
-    } else {
-      const m = (req.url || '').match(/\/(movie|tv)\/(\d+)/)
-      if (m) [, type, id] = m
-    }
-  }
+  const { kind, type, id, personId, season } = route
   if ((type !== 'movie' && type !== 'tv') || !/^\d+$/.test(String(id))) {
     return serveFallback()
   }
@@ -199,15 +191,15 @@ export default async function handler(req, res) {
   const isSeason = kind === 'season' && /^\d+$/.test(String(season))
   const isTV = type === 'tv'
 
-  const apiKey = process.env.TMDB_API_KEY
+  const apiKey = env.TMDB_API_KEY
   if (!apiKey) return serveFallback()
 
   let details
   try {
-    const url = new URL(`${TMDB_BASE}/${type}/${id}`)
-    url.searchParams.set('append_to_response', isTV ? 'aggregate_credits' : 'credits')
-    url.searchParams.set('api_key', apiKey)
-    const r = await fetch(url)
+    const target = new URL(`${TMDB_BASE}/${type}/${id}`)
+    target.searchParams.set('append_to_response', isTV ? 'aggregate_credits' : 'credits')
+    target.searchParams.set('api_key', apiKey)
+    const r = await fetch(target)
     if (!r.ok) throw new Error(`TMDB ${r.status}`)
     details = await r.json()
   } catch {
@@ -226,9 +218,9 @@ export default async function handler(req, res) {
     const n = Number(season)
     let seasonCast = []
     try {
-      const url = new URL(`${TMDB_BASE}/tv/${id}/season/${n}/aggregate_credits`)
-      url.searchParams.set('api_key', apiKey)
-      const r = await fetch(url)
+      const target = new URL(`${TMDB_BASE}/tv/${id}/season/${n}/aggregate_credits`)
+      target.searchParams.set('api_key', apiKey)
+      const r = await fetch(target)
       if (r.ok)
         seasonCast = ((await r.json()).cast || []).slice(0, 20).map((c) => ({
           name: c.name,
@@ -240,11 +232,11 @@ export default async function handler(req, res) {
     if (n < 1 || n > (details.number_of_seasons || 0)) return serveFallback()
 
     const showUrl = `/tv/${details.id}/${slugify(name)}`
-    canonical = `${SITE}/tv/${details.id}/season-${n}/${slugify(name)}`
+    canonical = `${site}/tv/${details.id}/season-${n}/${slugify(name)}`
     pageTitle = `${name} Season ${n} Characters & Cast — No Spoilers | Who's That?`
     description = `Every character in ${name} season ${n} with photos and the actors who play them${seasonCast[0] ? `, including ${seasonCast.slice(0, 3).map((c) => c.name).join(', ')}` : ''} — spoiler-free, nothing from later seasons.`
     ogType = 'video.tv_show'
-    ogImage = poster ? `${SITE}/api/og?type=tv&id=${details.id}` : null
+    ogImage = poster ? `${site}/api/og?type=tv&id=${details.id}` : null
 
     jsonLdList = [
       {
@@ -253,12 +245,12 @@ export default async function handler(req, res) {
         name: `${name} Season ${n}`,
         seasonNumber: n,
         url: canonical,
-        partOfSeries: { '@type': 'TVSeries', name, url: SITE + showUrl },
+        partOfSeries: { '@type': 'TVSeries', name, url: site + showUrl },
         actor: seasonCast.map((c) => ({ '@type': 'Person', name: c.name })),
       },
       breadcrumbLd([
-        ["Who's That?", `${SITE}/`],
-        [name, SITE + showUrl],
+        ["Who's That?", `${site}/`],
+        [name, site + showUrl],
         [`Season ${n}`],
       ]),
     ]
@@ -295,13 +287,13 @@ export default async function handler(req, res) {
       ? `https://image.tmdb.org/t/p/w500${credit.profile_path}`
       : null
 
-    canonical = `${SITE}/who-plays/${type}/${details.id}/${credit.id}/${slugify(`who plays ${character} in ${name}`)}`
+    canonical = `${site}/who-plays/${type}/${details.id}/${credit.id}/${slugify(`who plays ${character} in ${name}`)}`
     pageTitle = `Who Plays ${character} in ${name}${year ? ` (${year})` : ''}? — ${actor} | Who's That?`
     description = `${character} in ${name} is played by ${actor}. See their photo, age, and where else you've seen them — spoiler-free.`
     ogType = 'article'
     ogImage =
       profile || poster
-        ? `${SITE}/api/og?type=${type}&id=${details.id}&personId=${credit.id}`
+        ? `${site}/api/og?type=${type}&id=${details.id}&personId=${credit.id}`
         : null
     const titleUrl = `/${type}/${details.id}/${slugify(name)}`
     const answer = `${character} in ${name}${year ? ` (${year})` : ''} is played by ${actor}.`
@@ -327,7 +319,7 @@ export default async function handler(req, res) {
         performerIn: {
           '@type': isTV ? 'TVSeries' : 'Movie',
           name,
-          url: SITE + titleUrl,
+          url: site + titleUrl,
           actor: {
             '@type': 'PerformanceRole',
             characterName: character,
@@ -336,8 +328,8 @@ export default async function handler(req, res) {
         },
       },
       breadcrumbLd([
-        ["Who's That?", `${SITE}/`],
-        [name, SITE + titleUrl],
+        ["Who's That?", `${site}/`],
+        [name, site + titleUrl],
         [`Who plays ${character}?`],
       ]),
     ]
@@ -347,12 +339,12 @@ export default async function handler(req, res) {
       <p><a href="${escapeHtml(titleUrl)}">See the full spoiler-free cast &amp; character guide for ${escapeHtml(name)}</a></p>`
   } else {
     const cast = extractCast(details, isTV)
-    canonical = `${SITE}/${type}/${details.id}/${slugify(name)}`
+    canonical = `${site}/${type}/${details.id}/${slugify(name)}`
     pageTitle = `${name}${year ? ` (${year})` : ''} Cast & Character Guide — No Spoilers | Who's That?`
     // Deliberately not TMDB's overview: it can contain plot spoilers.
     description = `Who plays who in ${name}${year ? ` (${year})` : ''}? Browse a spoiler-free character guide with photos of every major character and the actors behind them${cast[0] ? `, including ${cast.slice(0, 3).map((c) => c.name).join(', ')}` : ''}.`
     ogType = isTV ? 'video.tv_show' : 'video.movie'
-    ogImage = poster ? `${SITE}/api/og?type=${type}&id=${details.id}` : null
+    ogImage = poster ? `${site}/api/og?type=${type}&id=${details.id}` : null
 
     jsonLdList = [
       {
@@ -366,7 +358,7 @@ export default async function handler(req, res) {
         actor: cast.map((c) => ({ '@type': 'Person', name: c.name })),
       },
       breadcrumbLd([
-        ["Who's That?", `${SITE}/`],
+        ["Who's That?", `${site}/`],
         [`${name}${year ? ` (${year})` : ''} cast & characters`],
       ]),
     ]
@@ -409,9 +401,6 @@ export default async function handler(req, res) {
     .filter(Boolean)
     .join('\n    ')
 
-  // Crawler-readable content placed inside #root; React's createRoot render
-  // replaces it on the client, which is expected for this pattern.
-
   html = html
     .replace(/<title>.*?<\/title>/s, `<title>${escapeHtml(pageTitle)}</title>`)
     .replace(
@@ -421,7 +410,5 @@ export default async function handler(req, res) {
     .replace('</head>', `    ${headExtras}\n  </head>`)
     .replace('<div id="root"></div>', `<div id="root">${crawlerBlock}</div>`)
 
-  res.setHeader('content-type', 'text/html; charset=utf-8')
-  res.setHeader('cache-control', 'public, s-maxage=86400, stale-while-revalidate=604800')
-  res.status(200).send(html)
+  return htmlResponse(html)
 }

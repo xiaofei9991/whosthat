@@ -1053,7 +1053,7 @@ function StaticPage({ page, navigate }) {
     setCanonical(`${window.location.origin}/${page}`)
   }, [content, page])
 
-  // FAQPage JSON-LD is injected server-side by api/page.js (kind=static).
+  // FAQPage JSON-LD is injected server-side by functions/_lib/page.js.
 
   return (
     <main className="animate-fade-up mx-auto max-w-2xl px-4 py-12">

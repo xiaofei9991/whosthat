@@ -1,0 +1,24 @@
+# Rebuild Pages daily so sitemap.xml / sitemap-hot.xml pick up the ramp
+# increment and the premiere-week hot lane. Create a Deploy Hook in
+# Cloudflare Pages → Settings → Deployments and store it as the
+# CF_DEPLOY_HOOK repository secret.
+name: Daily sitemap rebuild
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Cloudflare Pages deploy hook
+        env:
+          HOOK: ${{ secrets.CF_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "CF_DEPLOY_HOOK secret is not set" >&2
+            exit 1
+          fi
+          curl -fsS -X POST "$HOOK"

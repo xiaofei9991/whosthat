@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "include": [
+    "/",
+    "/api/*",
+    "/movie/*",
+    "/tv/*",
+    "/who-plays/*",
+    "/about",
+    "/faq",
+    "/privacy"
+  ],
+  "exclude": [
+    "/sitemap.xml",
+    "/sitemap-hot.xml",
+    "/robots.txt",
+    "/assets/*",
+    "/*.js",
+    "/*.css",
+    "/*.png",
+    "/*.svg",
+    "/*.ico",
+    "/*.webmanifest"
+  ]
+}

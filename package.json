@@ -5,14 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node scripts/inject-home-seo.mjs",
-    "preview": "vite preview"
+    "build": "vite build && node scripts/inject-home-seo.mjs && node scripts/write-sitemaps.mjs",
+    "preview": "vite preview",
+    "pages:dev": "wrangler pages dev dist"
   },
   "dependencies": {
-    "@vercel/analytics": "^2.0.1",
-    "@vercel/og": "^0.11.1",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "workers-og": "^0.0.27"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.11",

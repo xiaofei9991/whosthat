@@ -1,5 +1,5 @@
 const TMDB_BASE = 'https://api.themoviedb.org/3'
-const SITE = process.env.SITE_ORIGIN || 'https://whosthatcast.com'
+const DEFAULT_SITE = 'https://whosthatcast.com'
 
 // Premiere-week "hot lane" — separate from the ramped main sitemap so titles
 // can appear/disappear without shifting Google's already-crawled prefix.
@@ -10,7 +10,7 @@ const MAX_HOT_TITLES = 50
 const WHO_PLAYS_CAST_LIMIT = 8
 const CREDIT_CHUNK = 5
 
-// Keep in sync with src/slugify.js (api functions can't import from src/).
+// Keep in sync with src/slugify.js.
 function slugify(text) {
   return String(text || '')
     .toLowerCase()
@@ -69,19 +69,16 @@ async function mapInChunks(items, chunkSize, fn) {
   return out
 }
 
-export default async function handler(req, res) {
-  const apiKey = process.env.TMDB_API_KEY
-  if (!apiKey) return res.status(500).send('TMDB_API_KEY is not configured')
+export async function buildHotSitemapXml({
+  apiKey,
+  site = DEFAULT_SITE,
+  now = Date.now(),
+} = {}) {
+  if (!apiKey) throw new Error('TMDB_API_KEY is not configured')
 
-  const today = utcDay()
+  const today = utcDay(new Date(now))
   const isoDay = (ms) => new Date(ms).toISOString().slice(0, 10)
-  const [
-    nowPlaying,
-    upcoming,
-    airingToday,
-    onTheAir,
-    recentPremieres,
-  ] = await Promise.all([
+  const [nowPlaying, upcoming, airingToday, onTheAir, recentPremieres] = await Promise.all([
     fetchPage('/movie/now_playing', apiKey, 1),
     fetchPage('/movie/upcoming', apiKey, 1),
     fetchPage('/tv/airing_today', apiKey, 1),
@@ -174,11 +171,11 @@ export default async function handler(req, res) {
     const { item, cast, seasons } = entry
     const titleName = item.title || item.name
     const slug = slugify(titleName)
-    urls.push(`${SITE}/${item.media_type}/${item.id}${slug ? `/${slug}` : ''}`)
+    urls.push(`${site}/${item.media_type}/${item.id}${slug ? `/${slug}` : ''}`)
 
     if (item.media_type === 'tv' && seasons > 0) {
       // Current/latest season guide is the useful one during premiere week.
-      urls.push(`${SITE}/tv/${item.id}/season-${seasons}${slug ? `/${slug}` : ''}`)
+      urls.push(`${site}/tv/${item.id}/season-${seasons}${slug ? `/${slug}` : ''}`)
     }
 
     const isTV = item.media_type === 'tv'
@@ -190,26 +187,18 @@ export default async function handler(req, res) {
       if (!character) continue
       const wslug = slugify(`who plays ${character} in ${titleName}`)
       who.push(
-        `${SITE}/who-plays/${item.media_type}/${item.id}/${c.id}${wslug ? `/${wslug}` : ''}`,
+        `${site}/who-plays/${item.media_type}/${item.id}/${c.id}${wslug ? `/${wslug}` : ''}`,
       )
     }
     who.sort()
     urls.push(...who)
   }
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+  return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls
-  .map(
-    (u) =>
-      `  <url><loc>${escapeXml(u)}</loc><lastmod>${lastmod}</lastmod></url>`,
-  )
+  .map((u) => `  <url><loc>${escapeXml(u)}</loc><lastmod>${lastmod}</lastmod></url>`)
   .join('\n')}
 </urlset>
 `
-
-  res.setHeader('content-type', 'application/xml; charset=utf-8')
-  // Short CDN TTL so premiere-day titles surface within an hour.
-  res.setHeader('cache-control', 'public, s-maxage=3600, stale-while-revalidate=86400')
-  res.status(200).send(xml)
 }

@@ -7,7 +7,7 @@ const TMDB_BASE = 'https://api.themoviedb.org/3'
 const ALLOWED_PATH = /^\/(search|movie|tv|person|trending)\//
 
 // Dev-only proxy so the TMDB key never reaches the browser.
-// In production the same logic runs as a Vercel function (api/tmdb.js).
+// In production the same logic runs as a Cloudflare Pages Function (functions/api/tmdb.js).
 function tmdbDevProxy(apiKey) {
   return {
     name: 'tmdb-dev-proxy',

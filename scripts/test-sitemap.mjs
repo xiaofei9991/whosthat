@@ -1,34 +1,18 @@
 import { readFileSync } from 'node:fs'
-import handler from '../api/sitemap.js'
+import {
+  assembleSitemapXml,
+  currentCap,
+  fetchSitemapData,
+} from './lib/sitemap.mjs'
 
-process.env.TMDB_API_KEY ||= readFileSync(new URL('../.env', import.meta.url), 'utf8')
-  .match(/TMDB_API_KEY=(.+)/)[1]
-  .trim()
+const apiKey =
+  process.env.TMDB_API_KEY ||
+  readFileSync(new URL('../.env', import.meta.url), 'utf8').match(/TMDB_API_KEY=(.+)/)[1].trim()
 
-function makeRes() {
-  return {
-    headers: {},
-    setHeader(k, v) {
-      this.headers[k] = v
-    },
-    status(c) {
-      this.code = c
-      return this
-    },
-    send(body) {
-      this.body = body
-    },
-  }
-}
+const SITE = process.env.SITE_ORIGIN || 'https://whosthatcast.com'
 
-async function run(label, fakeNow) {
-  const realNow = Date.now
-  if (fakeNow) Date.now = () => fakeNow
-  const res = makeRes()
-  const t0 = realNow()
-  await handler({}, res)
-  Date.now = realNow
-  const urls = [...res.body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1])
+function summarize(label, xml, ms) {
+  const urls = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1])
   const byType = {}
   for (const u of urls) {
     const seg = u.includes('/season-')
@@ -42,12 +26,29 @@ async function run(label, fakeNow) {
             : 'home'
     byType[seg] = (byType[seg] || 0) + 1
   }
-  console.log(label, '| status', res.code, '| total', urls.length, '|', JSON.stringify(byType), '|', Date.now() - t0 + 'ms')
+  console.log(label, '| total', urls.length, '|', JSON.stringify(byType), '|', ms + 'ms')
   return urls
 }
 
-const today = await run('today     ')
-const later = await run('+30 days  ', Date.now() + 30 * 86400000)
+const todayCap = currentCap()
+const laterCap = currentCap(Date.now() + 30 * 86400000)
+
+const t0 = Date.now()
+// Fetch once at the larger cap so both assemblies share the same TMDB snapshot.
+const data = await fetchSitemapData(apiKey, laterCap)
+const fetchMs = Date.now() - t0
+
+const today = summarize(
+  'today     ',
+  assembleSitemapXml({ ...data, site: SITE, cap: todayCap }),
+  fetchMs,
+)
+const later = summarize(
+  '+30 days  ',
+  assembleSitemapXml({ ...data, site: SITE, cap: laterCap }),
+  0,
+)
 
 const prefixStable = today.every((u, i) => later[i] === u)
 console.log('prefix stable (growth is additive):', prefixStable)
+if (!prefixStable) process.exit(1)

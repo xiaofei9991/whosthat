@@ -1,12 +1,11 @@
 // Post-build step: inject crawler-visible content into dist/index.html for the
-// homepage. Vercel serves static files before rewrites, so "/" can never hit
-// api/page.js — instead the internal links, canonical, and JSON-LD are baked in
-// at build time. Everything is wrapped in HOME-HEAD / HOME-BODY markers so
-// api/page.js can strip them when it reuses index.html as the template for
-// movie/tv/season/who-plays pages.
+// homepage. Static "/" is served from dist; the catch-all Pages Function only
+// intercepts content routes. Everything is wrapped in HOME-HEAD / HOME-BODY
+// markers so functions/_lib/page.js can strip them when it reuses index.html
+// as the template for movie/tv/season/who-plays pages.
 //
-// IMPORTANT: the body block must not contain a literal "</div>" (api/page.js
-// replaces the root div with a non-greedy regex).
+// IMPORTANT: the body block must not contain a literal "</div>"
+// (functions/_lib/page.js replaces the root div with a non-greedy regex).
 import { readFileSync, writeFileSync } from 'node:fs'
 
 const SITE = process.env.SITE_ORIGIN || 'https://whosthatcast.com'
