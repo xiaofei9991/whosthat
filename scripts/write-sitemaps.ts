@@ -3,6 +3,7 @@
 // Worker (free plan caps subrequests at 50). Daily freshness comes from the
 // Cloudflare Deploy Hook (see .github/workflows/daily-rebuild.yml).
 import { readFileSync, writeFileSync } from 'node:fs'
+import { submitIndexNow, urlsFromSitemap } from './lib/indexnow'
 import { buildSitemapXml } from './lib/sitemap'
 import { buildHotSitemapXml } from './lib/sitemap-hot'
 
@@ -38,3 +39,12 @@ const count = (xml: string) => (xml.match(/<url>/g) || []).length
 console.log(
   `write-sitemaps: sitemap.xml ${count(main)} urls, sitemap-hot.xml ${count(hot)} urls (${Date.now() - t0}ms)`,
 )
+
+try {
+  const urls = [...urlsFromSitemap(main), ...urlsFromSitemap(hot)]
+  await submitIndexNow(SITE, urls)
+  console.log(`write-sitemaps: IndexNow accepted ${urls.length} urls`)
+} catch (e) {
+  const message = e instanceof Error ? e.message : String(e)
+  console.warn(`write-sitemaps: IndexNow skipped (${message})`)
+}

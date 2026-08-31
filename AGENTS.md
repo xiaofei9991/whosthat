@@ -11,6 +11,7 @@
 - **环境变量（Cloudflare Pages 上配置）**: `TMDB_API_KEY`、`SITE_ORIGIN=https://whosthatcast.com`（Production + Preview）
 - **分析**: Cloudflare Web Analytics（仪表盘开启，无需前端 SDK）
 - **Google Search Console**: HTML meta tag 验证（token 在 `index.html`），只维护 `https://whosthatcast.com/` 一个资源，sitemap 提交 `/sitemap.xml` 和 `/sitemap-hot.xml`
+- **IndexNow（Bing 等，Google 不用）**: 密钥文件 `public/{key}.txt`（key 与 `scripts/lib/indexnow.ts` 同步）；`write-sitemaps.ts` 写完两份 sitemap 后 POST 全部 URL。失败只打 warn，不让构建挂。Cloudflare **Crawler Hints** 可另外打开（缓存未命中时也会 ping）
 
 ## 技术架构
 
